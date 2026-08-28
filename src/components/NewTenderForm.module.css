@@ -1,0 +1,166 @@
+.page {
+  padding: 32px;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.card {
+  padding: 28px 32px;
+}
+
+.successWrap {
+  text-align: center;
+  padding: 40px 0;
+}
+
+.successTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-fg1);
+  margin-bottom: 8px;
+}
+
+.successSummary {
+  font-size: 13px;
+  color: var(--color-fg2);
+  margin-bottom: 24px;
+}
+
+.primaryButton {
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  padding: 10px 20px;
+  border-radius: var(--radius-full);
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.steps {
+  display: flex;
+  align-items: center;
+  margin-bottom: 28px;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+}
+
+.stepCircle {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+  background: var(--zk-gray-100);
+  color: var(--color-fg3);
+}
+.stepCircleActive {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.stepLabel {
+  font-size: 12.5px;
+  margin-left: 8px;
+  white-space: nowrap;
+  color: var(--color-fg3);
+}
+.stepLabelActive {
+  color: var(--color-fg1);
+  font-weight: 500;
+}
+
+.stepLine {
+  height: 1px;
+  background: var(--color-divider);
+  flex: 1;
+  margin: 0 14px;
+}
+
+.fieldColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.fieldRow2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--color-fg2);
+}
+
+.input {
+  padding: 9px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--color-fg1);
+  outline: none;
+  font-family: var(--font-sans);
+}
+
+.textarea {
+  composes: input;
+  resize: vertical;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--color-fg3);
+  margin-bottom: 14px;
+}
+
+.milestoneGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 16px;
+}
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-divider);
+}
+
+.backButton {
+  background: none;
+  border: 1px solid var(--color-border);
+  color: var(--color-fg2);
+  padding: 10px 22px;
+  border-radius: var(--radius-full);
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+}
+.backButtonHidden {
+  visibility: hidden;
+}
+
+.nextButton {
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  padding: 10px 22px;
+  border-radius: var(--radius-full);
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+}

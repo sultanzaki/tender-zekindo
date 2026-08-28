@@ -1,0 +1,79 @@
+.bar {
+  height: 60px;
+  background: #fff;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.left {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brandTitle {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--color-fg1);
+  border-left: 1px solid var(--color-border);
+  padding-left: 10px;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.tab {
+  background: none;
+  color: var(--color-fg2);
+  border: none;
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.tab:hover {
+  color: var(--color-primary-dark);
+}
+
+.tabActive {
+  background: var(--zk-blue-50);
+  color: var(--color-primary);
+}
+.tabActive:hover {
+  color: var(--color-primary);
+}
+
+.newButton {
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  padding: 9px 16px;
+  border-radius: var(--radius-full);
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+.newButton:hover {
+  background: var(--color-primary-dark);
+}
+.newButton:active {
+  transform: scale(0.97);
+}

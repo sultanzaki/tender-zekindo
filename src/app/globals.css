@@ -1,0 +1,120 @@
+/* Zekindo Chemicals — Design System Tokens */
+/* ─── Color Primitives ─── */
+:root {
+  /* Brand Blues */
+  --zk-blue-50: #e8f4fa;
+  --zk-blue-100: #c5e1f0;
+  --zk-blue-200: #92c8e4;
+  --zk-blue-300: #5baed8;
+  --zk-blue-400: #2b8db8; /* Primary brand azure */
+  --zk-blue-500: #237ba3;
+  --zk-blue-600: #1a6a8e;
+  --zk-blue-700: #1a5f7a; /* Deep navy */
+  --zk-blue-800: #134a60;
+  --zk-blue-900: #0c3344;
+
+  /* Neutrals */
+  --zk-gray-0: #ffffff;
+  --zk-gray-50: #f7fbfd;
+  --zk-gray-100: #f0f4f8;
+  --zk-gray-200: #e0e8ee;
+  --zk-gray-300: #c8d6df;
+  --zk-gray-400: #a0b4bf;
+  --zk-gray-500: #6b8a96;
+  --zk-gray-600: #4a6872;
+  --zk-gray-700: #2e4a53;
+  --zk-gray-800: #1e3038;
+  --zk-gray-900: #111111;
+
+  /* Semantic / Status */
+  --zk-success: #28a745;
+  --zk-success-light: #e6f4ea;
+  --zk-warning: #f5a623;
+  --zk-warning-light: #fef3e0;
+  --zk-warning-text: #8a5a00;
+  --zk-error: #d0021b;
+  --zk-error-light: #fdecea;
+  --zk-info: #2b8db8;
+  --zk-info-light: #e8f4fa;
+
+  /* ─── Semantic Color Vars ─── */
+  --color-primary: var(--zk-blue-400);
+  --color-primary-dark: var(--zk-blue-700);
+  --color-primary-light: var(--zk-blue-50);
+  --color-primary-hover: var(--zk-blue-500);
+
+  --color-bg: var(--zk-gray-0);
+  --color-bg-subtle: var(--zk-gray-50);
+  --color-bg-tint: var(--zk-blue-50);
+  --color-surface: var(--zk-gray-0);
+
+  --color-fg1: var(--zk-gray-900);
+  --color-fg2: #444444;
+  --color-fg3: #888888;
+  --color-fg-on-primary: var(--zk-gray-0);
+
+  --color-border: #e0e0e0;
+  --color-border-focus: var(--zk-blue-400);
+  --color-divider: var(--zk-gray-200);
+
+  /* ─── Typography Vars ─── */
+  --font-sans: var(--font-poppins), "Segoe UI", system-ui, sans-serif;
+
+  /* ─── Radii ─── */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  /* ─── Shadows ─── */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 2px 8px rgba(43, 141, 184, 0.1);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0 8px 24px rgba(0, 0, 0, 0.14);
+  --shadow-focus: 0 0 0 3px rgba(43, 141, 184, 0.25);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  background: var(--zk-gray-50);
+  color: var(--color-fg1);
+  font-size: 14px;
+  min-width: 1440px;
+}
+
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+a:hover {
+  color: var(--color-primary-dark);
+  text-decoration: underline;
+}
+
+input,
+select,
+textarea,
+button {
+  font-family: var(--font-sans);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--zk-gray-300);
+  border-radius: 6px;
+}

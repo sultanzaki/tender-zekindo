@@ -1,0 +1,189 @@
+.wrap {
+  padding: 24px 32px;
+}
+
+.toolbar {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--color-divider);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.search {
+  flex: 1;
+  min-width: 260px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  outline: none;
+}
+
+.select {
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 12.5px;
+  color: var(--color-fg2);
+  background: #fff;
+  outline: none;
+}
+
+.colMenuWrap {
+  position: relative;
+}
+
+.colMenuButton {
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 8px 14px;
+  font-size: 13px;
+  color: var(--color-fg2);
+  cursor: pointer;
+}
+
+.colMenu {
+  position: absolute;
+  left: 0;
+  top: 38px;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 12px;
+  width: 260px;
+  z-index: 30;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.colMenuItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 4px;
+  font-size: 12.5px;
+  color: var(--color-fg2);
+  cursor: pointer;
+}
+
+.resetButton {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  font-size: 12.5px;
+  cursor: pointer;
+  padding: 8px 4px;
+}
+
+.resultCount {
+  margin-left: auto;
+  font-size: 12.5px;
+  color: var(--color-fg3);
+  white-space: nowrap;
+}
+
+.scroll {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.theadRow {
+  background: var(--zk-gray-50);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.th {
+  padding: 10px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-fg3);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  text-align: left;
+  white-space: nowrap;
+}
+.thRight {
+  text-align: right;
+}
+
+.bodyRow {
+  border-bottom: 1px solid var(--color-divider);
+  cursor: pointer;
+}
+.bodyRow:hover {
+  background: var(--zk-blue-50);
+}
+
+.td {
+  padding: 9px 12px;
+  font-size: 12.5px;
+  color: var(--color-fg1);
+}
+.tdRight {
+  text-align: right;
+  white-space: nowrap;
+}
+.tdMuted {
+  color: var(--color-fg3);
+}
+.tdNoWrap {
+  white-space: nowrap;
+}
+.tdEllipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dateCell {
+  padding: 9px 12px;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.dateEmpty {
+  color: var(--color-fg3);
+}
+.datePast {
+  background: var(--zk-success-light);
+  color: var(--zk-success);
+  font-weight: 500;
+}
+.dateUrgent {
+  background: var(--zk-error-light);
+  color: var(--zk-error);
+  font-weight: 600;
+}
+.dateSoon {
+  background: var(--zk-warning-light);
+  color: var(--zk-warning-text);
+  font-weight: 600;
+}
+.dateNormal {
+  color: var(--color-fg1);
+}
+
+.emptyBox {
+  padding: 60px 20px;
+  text-align: center;
+}
+.emptyText {
+  font-size: 14px;
+  color: var(--color-fg2);
+  margin-bottom: 6px;
+}
+.emptyReset {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  font-size: 13px;
+  cursor: pointer;
+}
