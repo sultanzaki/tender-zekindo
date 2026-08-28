@@ -91,7 +91,6 @@ body {
   background: var(--zk-gray-50);
   color: var(--color-fg1);
   font-size: 14px;
-  min-width: 1440px;
 }
 
 a {

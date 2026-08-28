@@ -136,6 +136,25 @@ export const DEFAULT_FILTERS: TenderFilters = {
   search: "",
 };
 
+/** Shape shared by the new-tender and edit-tender forms (before parsing). */
+export interface TenderFormValues {
+  area: string;
+  tenderNo: string;
+  customer: string;
+  product: string;
+  entitas: string;
+  qty: string;
+  oe: string;
+  nilaiPenawaran: string;
+  milestones: Partial<Record<MilestoneKey, string>>;
+}
+
+export interface TenderEditFormValues extends TenderFormValues {
+  result: string; // "" means still running (null in the DB)
+  carryOver: string;
+  remarks: string;
+}
+
 export interface FilterOptions {
   periods: string[];
   areas: string[];

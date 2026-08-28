@@ -1,6 +1,16 @@
+.scrollWrap {
+  overflow-x: auto;
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;
+}
+
+@media (max-width: 700px) {
+  .table {
+    min-width: 620px;
+  }
 }
 
 .row {

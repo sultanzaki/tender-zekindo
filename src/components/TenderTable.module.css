@@ -2,6 +2,12 @@
   padding: 24px 32px;
 }
 
+@media (max-width: 900px) {
+  .wrap {
+    padding: 16px;
+  }
+}
+
 .toolbar {
   padding: 16px 20px;
   border-bottom: 1px solid var(--color-divider);
@@ -31,6 +37,16 @@
   outline: none;
 }
 
+@media (max-width: 560px) {
+  .search {
+    min-width: 100%;
+  }
+  .select {
+    flex: 1;
+    min-width: 130px;
+  }
+}
+
 .colMenuWrap {
   position: relative;
 }
@@ -55,6 +71,7 @@
   box-shadow: var(--shadow-lg);
   padding: 12px;
   width: 260px;
+  max-width: calc(100vw - 32px);
   z-index: 30;
   max-height: 360px;
   overflow-y: auto;

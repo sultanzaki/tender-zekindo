@@ -1,3 +1,19 @@
+.pagePad {
+  padding: 28px 32px;
+}
+
+@media (max-width: 900px) {
+  .pagePad {
+    padding: 20px 24px;
+  }
+}
+
+@media (max-width: 600px) {
+  .pagePad {
+    padding: 16px;
+  }
+}
+
 .card {
   background: #fff;
   border: 1px solid var(--color-border);
@@ -11,6 +27,8 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
 }
 
 .cardTitle {

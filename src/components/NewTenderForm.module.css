@@ -4,37 +4,29 @@
   margin: 0 auto;
 }
 
+@media (max-width: 600px) {
+  .page {
+    padding: 16px;
+  }
+}
+
 .card {
   padding: 28px 32px;
 }
 
-.successWrap {
-  text-align: center;
-  padding: 40px 0;
+@media (max-width: 600px) {
+  .card {
+    padding: 20px 16px;
+  }
 }
 
-.successTitle {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--color-fg1);
-  margin-bottom: 8px;
-}
-
-.successSummary {
-  font-size: 13px;
-  color: var(--color-fg2);
-  margin-bottom: 24px;
-}
-
-.primaryButton {
-  background: var(--color-primary);
-  color: #fff;
-  border: none;
-  padding: 10px 20px;
-  border-radius: var(--radius-full);
-  font-weight: 500;
-  font-size: 13px;
-  cursor: pointer;
+.errorBanner {
+  margin-top: 16px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: var(--zk-error-light);
+  color: var(--zk-error);
+  font-size: 12.5px;
 }
 
 .steps {
@@ -84,6 +76,15 @@
   margin: 0 14px;
 }
 
+@media (max-width: 480px) {
+  .stepLabel {
+    display: none;
+  }
+  .stepLine {
+    margin: 0 6px;
+  }
+}
+
 .fieldColumn {
   display: flex;
   flex-direction: column;
@@ -94,6 +95,12 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+}
+
+@media (max-width: 480px) {
+  .fieldRow2 {
+    grid-template-columns: 1fr;
+  }
 }
 
 .label {
@@ -132,6 +139,12 @@
   gap: 14px 16px;
 }
 
+@media (max-width: 480px) {
+  .milestoneGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .footer {
   display: flex;
   justify-content: space-between;
@@ -163,4 +176,10 @@
   font-weight: 500;
   font-size: 13px;
   cursor: pointer;
+}
+
+.backButton:disabled,
+.nextButton:disabled {
+  opacity: 0.6;
+  cursor: default;
 }

@@ -11,6 +11,7 @@ import { periodsSorted } from "@/lib/tender-logic";
 import { DeadlinesCard } from "@/components/DeadlinesCard";
 import { StatsGrid } from "@/components/StatsGrid";
 import { LossBreakdownCard } from "@/components/LossBreakdownCard";
+import shared from "@/components/shared.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,7 @@ export default async function DashboardPage() {
   const lossBreakdown = computeLossBreakdown(tenders, period);
 
   return (
-    <div style={{ padding: "28px 32px", maxWidth: 1376, margin: "0 auto" }}>
+    <div className={shared.pagePad} style={{ maxWidth: 1376, margin: "0 auto" }}>
       <DeadlinesCard deadlines={deadlines} anchorFormatted={formatDateID(anchor) ?? anchor} />
       <StatsGrid stats={stats} periodLabel={period} />
       <LossBreakdownCard items={lossBreakdown} periodLabel={period} />

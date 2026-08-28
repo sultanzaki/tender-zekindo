@@ -27,8 +27,19 @@ There is no end-user auth: `SUPABASE_SERVICE_ROLE_KEY` is used server-side
 only (see `src/lib/supabase-server.ts`), and the `tenders` table has RLS
 enabled with no policies, so it isn't readable via the public anon key.
 
-The new-tender form (`/tenders/new`) is a UI-only multi-step flow — by
-design it does not insert into the database (see `chats/chat1.md`).
+`/tenders/new` (multi-step) and `/tenders/[id]/edit` (single page) write to
+Supabase via Server Actions in `src/lib/actions.ts`. New rows get their `id`
+(`T0271`, ...) and `row_no` assigned by a Postgres trigger + sequence (see
+`supabase/migrations/0001_init.sql`) so the app never computes "next id"
+itself; `period` is auto-assigned to the most recent existing period since
+there's no Period field in the form. Edit is a screen added beyond the
+original design (only a read-only Detail view was specified) — it exposes
+every mutable field, including `result`/`carry_over`/`remarks`, which the
+new-tender form doesn't touch.
+
+The layout is responsive (desktop, tablet, and mobile) — added after the
+original desktop-1440-only design; the dense tender table intentionally
+scrolls horizontally on narrow screens rather than becoming a card list.
 
 ---
 

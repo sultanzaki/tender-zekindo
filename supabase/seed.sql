@@ -398,3 +398,7 @@ CHEMICAL SCALE DAN CORROSION INHIBITOR', 'ZKI', null, null, null, '{"regist":"20
   ('T0268', 268, '2020-2021', 'Tidak diketahui', '21143M/OEKA/DM/XI/2021', 'Odira', 'Demulsifier', 'ZKI', null, null, null, '{"regist":"2021-12-03","pq":"2021-12-03","technicalPq":null,"prebid":null,"secondPrebid":null,"technicalBidding":null,"sampelLab":null,"pengirimanBukti":null,"pemasukanDokumen":null,"fieldTest":null,"openBid":null,"firstDelivery":null}'::jsonb, null, 'Berlanjut ke 2022-2021', null, null),
   ('T0269', 269, '2020-2021', 'Jawa', 'SHUO-211272A-A17', 'EP 4 - Sukowati Field', 'H2S Scavenger', 'ZKI', null, null, null, '{"regist":"2021-12-06","pq":"2021-12-06","technicalPq":null,"prebid":null,"secondPrebid":null,"technicalBidding":null,"sampelLab":null,"pengirimanBukti":null,"pemasukanDokumen":null,"fieldTest":null,"openBid":null,"firstDelivery":null}'::jsonb, null, 'Berlanjut ke 2022-2021', null, null),
   ('T0270', 270, '2020-2021', 'Tidak diketahui', '21304-RFQ-0046', 'Meindo', 'PPD', 'TKT', null, null, null, '{"regist":"2021-12-10","pq":null,"technicalPq":null,"prebid":"2021-12-15","secondPrebid":null,"technicalBidding":null,"sampelLab":"2022-01-12","pengirimanBukti":null,"pemasukanDokumen":"2022-01-12","fieldTest":null,"openBid":null,"firstDelivery":null}'::jsonb, null, null, null, null);
+
+-- Advance the row_no sequence past the seeded rows so the next tender added
+-- through the app (see src/lib/actions.ts) continues the numbering.
+select setval('public.tenders_row_no_seq', (select max(row_no) from public.tenders));

@@ -12,6 +12,19 @@
   flex-shrink: 0;
 }
 
+@media (max-width: 480px) {
+  .row {
+    gap: 8px;
+  }
+  .label {
+    width: 96px;
+    font-size: 12px;
+  }
+  .count {
+    width: 44px;
+  }
+}
+
 .barTrack {
   flex: 1;
   background: var(--zk-gray-100);

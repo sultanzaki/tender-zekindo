@@ -25,16 +25,20 @@ export interface Database {
           nilai_penawaran: number | null;
           created_at: string;
         };
+        // id/row_no are optional on insert: the `tenders_set_defaults`
+        // trigger (see supabase/migrations/0001_init.sql) fills them in
+        // from a sequence when omitted.
         Insert: Partial<Database["public"]["Tables"]["tenders"]["Row"]> & {
-          id: string;
-          row_no: number;
           period: string;
           area: string;
           customer: string;
         };
         Update: Partial<Database["public"]["Tables"]["tenders"]["Row"]>;
+        Relationships: [];
       };
     };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
   };
 }
 

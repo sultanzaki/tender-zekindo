@@ -27,7 +27,8 @@ export function TopNav() {
         </div>
       </div>
       <Link href="/tenders/new" className={styles.newButton}>
-        + Tender Baru
+        <span className={styles.newButtonFull}>+ Tender Baru</span>
+        <span className={styles.newButtonShort}>+ Tender</span>
       </Link>
     </div>
   );

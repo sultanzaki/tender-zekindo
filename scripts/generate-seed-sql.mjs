@@ -59,6 +59,10 @@ insert into public.tenders (
   qty, oe, idr_per_l, milestones, result, carry_over, remarks, nilai_penawaran
 ) values
 ${rows.join(",\n")};
+
+-- Advance the row_no sequence past the seeded rows so the next tender added
+-- through the app (see src/lib/actions.ts) continues the numbering.
+select setval('public.tenders_row_no_seq', (select max(row_no) from public.tenders));
 `;
 
 const outPath = path.join(__dirname, "../supabase/seed.sql");

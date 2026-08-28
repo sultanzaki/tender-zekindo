@@ -47,3 +47,29 @@ create index if not exists tenders_entitas_idx on public.tenders (entitas);
 create index if not exists tenders_result_idx on public.tenders (result);
 
 alter table public.tenders enable row level security;
+
+-- New rows (added via the "Tender Baru" form) get row_no/id assigned here,
+-- atomically, so the app never has to compute "next id" itself. Seeded rows
+-- pass row_no/id explicitly (see seed.sql), which this trigger leaves alone;
+-- seed.sql advances the sequence past the seeded rows afterwards.
+create sequence if not exists public.tenders_row_no_seq;
+
+create or replace function public.set_tender_defaults()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.row_no is null then
+    new.row_no := nextval('public.tenders_row_no_seq');
+  end if;
+  if new.id is null then
+    new.id := 'T' || lpad(new.row_no::text, 4, '0');
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists tenders_set_defaults on public.tenders;
+create trigger tenders_set_defaults
+  before insert on public.tenders
+  for each row execute function public.set_tender_defaults();

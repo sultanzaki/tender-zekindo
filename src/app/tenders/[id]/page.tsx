@@ -34,9 +34,14 @@ export default async function TenderDetailPage({ params }: { params: Promise<{ i
 
   return (
     <div className={styles.page}>
-      <Link href="/tenders" className={styles.backLink}>
-        &larr; Kembali ke tabel
-      </Link>
+      <div className={styles.topBar}>
+        <Link href="/tenders" className={styles.backLink} style={{ marginBottom: 0 }}>
+          &larr; Kembali ke tabel
+        </Link>
+        <Link href={`/tenders/${tender.id}/edit`} className={styles.editButton}>
+          Edit Tender
+        </Link>
+      </div>
 
       <div className={`${shared.card} ${styles.headerCard}`}>
         <div className={styles.headerTop}>
