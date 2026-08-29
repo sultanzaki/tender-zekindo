@@ -7,8 +7,8 @@ export function LossBreakdownCard({ items, periodLabel }: { items: LossBreakdown
   return (
     <div className={shared.card}>
       <div className={shared.cardHeader}>
-        <h2 className={shared.cardTitle}>Sebaran Alasan Kalah</h2>
-        <span className={shared.cardMeta}>Periode {periodLabel}</span>
+        <h2 className={shared.cardTitle}>Loss Reason Breakdown</h2>
+        <span className={shared.cardMeta}>Period {periodLabel}</span>
       </div>
       <div style={{ padding: 20 }}>
         {hasData ? (
@@ -23,7 +23,7 @@ export function LossBreakdownCard({ items, periodLabel }: { items: LossBreakdown
           ))
         ) : (
           <div className={shared.emptyState} style={{ padding: "12px 0" }}>
-            Belum ada tender kalah pada periode ini.
+            No lost tenders in this period.
           </div>
         )}
       </div>

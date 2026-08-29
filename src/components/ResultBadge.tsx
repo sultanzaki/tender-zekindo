@@ -10,5 +10,5 @@ const TONE_CLASS = {
 
 export function ResultBadge({ result }: { result: string | null }) {
   const tone = resultTone(result);
-  return <span className={`${shared.badge} ${TONE_CLASS[tone]}`}>{result || "Berjalan"}</span>;
+  return <span className={`${shared.badge} ${TONE_CLASS[tone]}`}>{result || "Running"}</span>;
 }

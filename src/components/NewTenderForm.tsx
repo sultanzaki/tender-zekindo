@@ -1,8 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { createTender } from "@/lib/actions";
+import { findDuplicateTenderNo, findOutOfOrderMilestones } from "@/lib/tender-logic";
 import { MILESTONE_DEFS, type FilterOptions, type MilestoneKey, type TenderFormValues } from "@/lib/types";
+import { AreaSelect } from "./AreaSelect";
+import { NumberInput } from "./NumberInput";
 import shared from "./shared.module.css";
 import styles from "./NewTenderForm.module.css";
 
@@ -14,13 +17,22 @@ const EMPTY_FORM: TenderFormValues = {
   entitas: "",
   qty: "",
   oe: "",
+  oeCatatan: "",
   nilaiPenawaran: "",
   milestones: {},
 };
 
-const STEP_LABELS = ["Identitas Tender", "Nilai & Entitas", "Tanggal Milestone"];
+const STEP_LABELS = ["Tender Details", "Value & Entity", "Milestone Dates"];
 
-export function NewTenderForm({ options }: { options: FilterOptions }) {
+export function NewTenderForm({
+  options,
+  areaOptions,
+  existingTenders,
+}: {
+  options: FilterOptions;
+  areaOptions: string[];
+  existingTenders: { id: string; tenderNo: string | null }[];
+}) {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState<TenderFormValues>(EMPTY_FORM);
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +46,12 @@ export function NewTenderForm({ options }: { options: FilterOptions }) {
   function setMilestone(key: MilestoneKey, value: string) {
     setFormData((f) => ({ ...f, milestones: { ...f.milestones, [key]: value } }));
   }
+
+  const isDuplicateTenderNo = useMemo(
+    () => findDuplicateTenderNo(formData.tenderNo, existingTenders),
+    [formData.tenderNo, existingTenders]
+  );
+  const milestoneOrderIssues = useMemo(() => findOutOfOrderMilestones(formData.milestones), [formData.milestones]);
 
   function handleSubmit() {
     setError(null);
@@ -63,32 +81,33 @@ export function NewTenderForm({ options }: { options: FilterOptions }) {
         {step === 1 && (
           <div className={styles.fieldColumn}>
             <label className={styles.label}>
-              Area
-              <select className={styles.input} value={formData.area} onChange={field("area")}>
-                <option value="">Pilih area</option>
-                {options.areas.map((a) => (
-                  <option key={a} value={a}>
-                    {a}
-                  </option>
-                ))}
-              </select>
+              Area <span className={styles.required}>*</span>
+              <AreaSelect
+                className={styles.input}
+                value={formData.area}
+                options={areaOptions}
+                onChange={(v) => setFormData((f) => ({ ...f, area: v }))}
+              />
             </label>
             <label className={styles.label}>
-              No. Tender
+              Tender No.
               <input
                 className={styles.input}
                 value={formData.tenderNo}
                 onChange={field("tenderNo")}
-                placeholder="No. Tender"
+                placeholder="Tender number"
               />
+              {isDuplicateTenderNo && (
+                <span className={styles.fieldWarning}>Another tender already uses this number.</span>
+              )}
             </label>
             <label className={styles.label}>
-              Customer
+              Customer <span className={styles.required}>*</span>
               <input
                 className={styles.input}
                 value={formData.customer}
                 onChange={field("customer")}
-                placeholder="Nama customer"
+                placeholder="Customer name"
                 list="customerList"
               />
               <datalist id="customerList">
@@ -98,12 +117,12 @@ export function NewTenderForm({ options }: { options: FilterOptions }) {
               </datalist>
             </label>
             <label className={styles.label}>
-              Judul Paket
+              Package Title
               <textarea
                 className={styles.textarea}
                 value={formData.product}
                 onChange={field("product")}
-                placeholder="Judul paket tender"
+                placeholder="Tender package title"
                 rows={3}
               />
             </label>
@@ -113,12 +132,12 @@ export function NewTenderForm({ options }: { options: FilterOptions }) {
         {step === 2 && (
           <div className={styles.fieldColumn}>
             <label className={styles.label}>
-              Entitas / Konsorsium
+              Entity / Consortium
               <input
                 className={styles.input}
                 value={formData.entitas}
                 onChange={field("entitas")}
-                placeholder="mis. ZKI atau ZKI-RGA"
+                placeholder="e.g. ZKI or ZKI-RGA"
                 list="entitasList"
               />
               <datalist id="entitasList">
@@ -130,20 +149,39 @@ export function NewTenderForm({ options }: { options: FilterOptions }) {
             <div className={styles.fieldRow2}>
               <label className={styles.label}>
                 Qty
-                <input className={styles.input} value={formData.qty} onChange={field("qty")} placeholder="mis. 12000" />
+                <NumberInput
+                  className={styles.input}
+                  value={formData.qty}
+                  onChange={(v) => setFormData((f) => ({ ...f, qty: v }))}
+                  placeholder="e.g. 12,000"
+                />
               </label>
               <label className={styles.label}>
                 OE (Rp)
-                <input className={styles.input} value={formData.oe} onChange={field("oe")} placeholder="Nilai OE" />
+                <NumberInput
+                  className={styles.input}
+                  value={formData.oe}
+                  onChange={(v) => setFormData((f) => ({ ...f, oe: v }))}
+                  placeholder="OE value"
+                />
               </label>
             </div>
             <label className={styles.label}>
-              Nilai Penawaran Kita (Rp)
+              OE Note
               <input
                 className={styles.input}
+                value={formData.oeCatatan}
+                onChange={field("oeCatatan")}
+                placeholder="e.g. Confidential, or a foreign-currency amount"
+              />
+            </label>
+            <label className={styles.label}>
+              Our Bid Value (Rp)
+              <NumberInput
+                className={styles.input}
                 value={formData.nilaiPenawaran}
-                onChange={field("nilaiPenawaran")}
-                placeholder="Nilai penawaran"
+                onChange={(v) => setFormData((f) => ({ ...f, nilaiPenawaran: v }))}
+                placeholder="Bid value"
               />
             </label>
           </div>
@@ -151,7 +189,17 @@ export function NewTenderForm({ options }: { options: FilterOptions }) {
 
         {step === 3 && (
           <div>
-            <div className={styles.hint}>Tanggal boleh dikosongkan jika belum diketahui.</div>
+            <div className={styles.hint}>Dates can be left blank if not yet known.</div>
+            {milestoneOrderIssues.length > 0 && (
+              <div className={styles.orderWarning}>
+                {milestoneOrderIssues.map((issue, i) => (
+                  <div key={i}>
+                    &ldquo;{issue.laterLabel}&rdquo; is dated before &ldquo;{issue.earlierLabel}&rdquo; — double-check these
+                    dates.
+                  </div>
+                ))}
+              </div>
+            )}
             <div className={styles.milestoneGrid}>
               {MILESTONE_DEFS.map((d) => (
                 <label key={d.key} className={styles.label}>
@@ -176,15 +224,15 @@ export function NewTenderForm({ options }: { options: FilterOptions }) {
             onClick={() => setStep((s) => Math.max(1, s - 1))}
             disabled={isPending}
           >
-            Kembali
+            Back
           </button>
           {step === 3 ? (
             <button className={styles.nextButton} onClick={handleSubmit} disabled={isPending}>
-              {isPending ? "Menyimpan..." : "Simpan Tender"}
+              {isPending ? "Saving..." : "Save Tender"}
             </button>
           ) : (
             <button className={styles.nextButton} onClick={() => setStep((s) => Math.min(3, s + 1))}>
-              Lanjut
+              Next
             </button>
           )}
         </div>

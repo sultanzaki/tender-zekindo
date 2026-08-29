@@ -3,7 +3,10 @@
 -- Applied automatically by `supabase db reset` (or run manually against any
 -- Postgres connection string once the schema in 0001_init.sql exists).
 
-truncate table public.tenders;
+-- cascade: tender_events references tenders(id), and a plain TRUNCATE
+-- refuses to run while another table has a foreign key into this one. This
+-- also clears any accumulated audit log, which is correct for a full reseed.
+truncate table public.tenders cascade;
 
 insert into public.tenders (
   id, row_no, period, area, tender_no, customer, product, entitas,
@@ -402,3 +405,11 @@ CHEMICAL SCALE DAN CORROSION INHIBITOR', 'ZKI', null, null, null, '{"regist":"20
 -- Advance the row_no sequence past the seeded rows so the next tender added
 -- through the app (see src/lib/actions.ts) continues the numbering.
 select setval('public.tenders_row_no_seq', (select max(row_no) from public.tenders));
+
+-- Seed the admin-extendable Area dropdown with whatever areas already exist
+-- in the data (see src/lib/actions.ts addSelectOption and AreaSelect.tsx).
+-- Done here, not in the schema migration, because `tenders` is empty at
+-- migration-apply time — this only makes sense once seed data is loaded.
+insert into public.select_options (field, value)
+select 'area', area from (select distinct area from public.tenders) as areas
+on conflict do nothing;

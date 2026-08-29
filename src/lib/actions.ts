@@ -3,8 +3,20 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { supabaseServer } from "./supabase-server";
+import { requireAdmin } from "./auth/dal";
+import { getTenderById } from "./tenders";
 import { currentPeriod, periodsSorted } from "./tender-logic";
-import { MILESTONE_KEYS, RESULT_ENUM, type Milestones, type TenderEditFormValues, type TenderFormValues } from "./types";
+import {
+  MILESTONE_KEYS,
+  RESULT_ENUM,
+  type Milestones,
+  type MilestoneKey,
+  type Tender,
+  type TenderEditFormValues,
+  type TenderEventAction,
+  type TenderEventChange,
+  type TenderFormValues,
+} from "./types";
 
 export interface ActionError {
   error: string;
@@ -24,19 +36,74 @@ function buildMilestones(input: TenderFormValues["milestones"]): Milestones {
 }
 
 function validate(values: TenderFormValues): string | null {
-  if (!values.area.trim()) return "Area wajib dipilih.";
-  if (!values.customer.trim()) return "Customer wajib diisi.";
+  if (!values.area.trim()) return "Area is required.";
+  if (!values.customer.trim()) return "Customer is required.";
   return null;
+}
+
+function labelFor(tender: Tender): string {
+  return tender.tenderNo || tender.product || tender.id;
 }
 
 async function resolveCurrentPeriod(): Promise<string> {
   const { data, error } = await supabaseServer().from("tenders").select("period");
-  if (error) throw new Error(`Gagal memuat periode: ${error.message}`);
+  if (error) throw new Error(`Failed to determine period: ${error.message}`);
   const periods = periodsSorted((data ?? []).map((r) => r.period));
   return currentPeriod(periods) || new Date().getFullYear().toString();
 }
 
+function diffRecords(
+  before: Record<string, unknown>,
+  patch: Record<string, unknown>
+): Record<string, TenderEventChange> | null {
+  const changes: Record<string, TenderEventChange> = {};
+  for (const [key, newVal] of Object.entries(patch)) {
+    const oldVal = before[key] ?? null;
+    const normalizedNew = newVal ?? null;
+    if (JSON.stringify(oldVal) !== JSON.stringify(normalizedNew)) {
+      changes[key] = { from: oldVal, to: normalizedNew };
+    }
+  }
+  return Object.keys(changes).length ? changes : null;
+}
+
+async function logTenderEvent(params: {
+  tenderId: string | null;
+  tenderLabel: string;
+  actorId: string;
+  actorName: string;
+  action: TenderEventAction;
+  changes: Record<string, TenderEventChange> | null;
+}) {
+  const { error } = await supabaseServer().from("tender_events").insert({
+    tender_id: params.tenderId,
+    tender_label: params.tenderLabel,
+    actor_id: params.actorId,
+    actor_name: params.actorName,
+    action: params.action,
+    changes: params.changes,
+  });
+  if (error) console.error("Failed to write tender_events row:", error.message);
+}
+
+function toInsertPayload(values: TenderFormValues) {
+  return {
+    area: values.area,
+    tender_no: values.tenderNo || null,
+    customer: values.customer.trim(),
+    product: values.product || null,
+    entitas: values.entitas || null,
+    qty: parseNumericInput(values.qty),
+    oe: parseNumericInput(values.oe),
+    oe_catatan: values.oeCatatan || null,
+    nilai_penawaran: parseNumericInput(values.nilaiPenawaran),
+    milestones: buildMilestones(values.milestones),
+  };
+}
+
 export async function createTender(values: TenderFormValues): Promise<ActionError | undefined> {
+  const ctx = await requireAdmin();
+
   const validationError = validate(values);
   if (validationError) return { error: validationError };
 
@@ -44,27 +111,30 @@ export async function createTender(values: TenderFormValues): Promise<ActionErro
   try {
     period = await resolveCurrentPeriod();
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Gagal menentukan periode." };
+    return { error: e instanceof Error ? e.message : "Failed to determine period." };
   }
 
   const { data, error } = await supabaseServer()
     .from("tenders")
     .insert({
+      ...toInsertPayload(values),
       period,
-      area: values.area,
-      tender_no: values.tenderNo || null,
-      customer: values.customer.trim(),
-      product: values.product || null,
-      entitas: values.entitas || null,
-      qty: parseNumericInput(values.qty),
-      oe: parseNumericInput(values.oe),
-      nilai_penawaran: parseNumericInput(values.nilaiPenawaran),
-      milestones: buildMilestones(values.milestones),
+      created_by: ctx.userId,
+      updated_by: ctx.userId,
     })
     .select("id")
     .single();
 
-  if (error) return { error: `Gagal menyimpan tender: ${error.message}` };
+  if (error) return { error: `Failed to save tender: ${error.message}` };
+
+  await logTenderEvent({
+    tenderId: data.id,
+    tenderLabel: values.tenderNo || values.product || data.id,
+    actorId: ctx.userId,
+    actorName: ctx.profile.name,
+    action: "create",
+    changes: diffRecords({}, toInsertPayload(values)),
+  });
 
   revalidatePath("/");
   revalidatePath("/tenders");
@@ -72,34 +142,213 @@ export async function createTender(values: TenderFormValues): Promise<ActionErro
 }
 
 export async function updateTender(id: string, values: TenderEditFormValues): Promise<ActionError | undefined> {
+  const ctx = await requireAdmin();
+
   const validationError = validate(values);
   if (validationError) return { error: validationError };
   if (values.result && !(RESULT_ENUM as readonly string[]).includes(values.result)) {
-    return { error: "Result tidak valid." };
+    return { error: "Invalid result value." };
   }
 
-  const { error } = await supabaseServer()
+  const { data: before, error: beforeError } = await supabaseServer()
     .from("tenders")
-    .update({
-      area: values.area,
-      tender_no: values.tenderNo || null,
-      customer: values.customer.trim(),
-      product: values.product || null,
-      entitas: values.entitas || null,
-      qty: parseNumericInput(values.qty),
-      oe: parseNumericInput(values.oe),
-      nilai_penawaran: parseNumericInput(values.nilaiPenawaran),
-      milestones: buildMilestones(values.milestones),
-      result: values.result || null,
-      carry_over: values.carryOver || null,
-      remarks: values.remarks || null,
-    })
-    .eq("id", id);
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (beforeError || !before) return { error: "Tender not found." };
 
-  if (error) return { error: `Gagal menyimpan perubahan: ${error.message}` };
+  const patch = {
+    ...toInsertPayload(values),
+    result: values.result || null,
+    carry_over: values.carryOver || null,
+    remarks: values.remarks || null,
+    remark: values.remark || null,
+    pnl: values.pnl,
+    catatan_internal: values.catatanInternal || null,
+    updated_by: ctx.userId,
+  };
+
+  const { error } = await supabaseServer().from("tenders").update(patch).eq("id", id);
+  if (error) return { error: `Failed to save changes: ${error.message}` };
+
+  await logTenderEvent({
+    tenderId: id,
+    tenderLabel: values.tenderNo || values.product || id,
+    actorId: ctx.userId,
+    actorName: ctx.profile.name,
+    action: "update",
+    changes: diffRecords(before, patch),
+  });
 
   revalidatePath("/");
   revalidatePath("/tenders");
   revalidatePath(`/tenders/${id}`);
   redirect(`/tenders/${id}`);
+}
+
+export async function archiveTender(id: string): Promise<ActionError | undefined> {
+  const ctx = await requireAdmin();
+  const tender = await getTenderById(id);
+  if (!tender) return { error: "Tender not found." };
+
+  const { error } = await supabaseServer()
+    .from("tenders")
+    .update({ archived_at: new Date().toISOString(), updated_by: ctx.userId })
+    .eq("id", id);
+  if (error) return { error: error.message };
+
+  await logTenderEvent({
+    tenderId: id,
+    tenderLabel: labelFor(tender),
+    actorId: ctx.userId,
+    actorName: ctx.profile.name,
+    action: "archive",
+    changes: null,
+  });
+
+  revalidatePath("/");
+  revalidatePath("/tenders");
+  revalidatePath("/tenders/archive");
+  revalidatePath(`/tenders/${id}`);
+  redirect("/tenders");
+}
+
+export async function restoreTender(id: string): Promise<ActionError | undefined> {
+  const ctx = await requireAdmin();
+  const tender = await getTenderById(id);
+  if (!tender) return { error: "Tender not found." };
+
+  const { error } = await supabaseServer()
+    .from("tenders")
+    .update({ archived_at: null, updated_by: ctx.userId })
+    .eq("id", id);
+  if (error) return { error: error.message };
+
+  await logTenderEvent({
+    tenderId: id,
+    tenderLabel: labelFor(tender),
+    actorId: ctx.userId,
+    actorName: ctx.profile.name,
+    action: "restore",
+    changes: null,
+  });
+
+  revalidatePath("/");
+  revalidatePath("/tenders");
+  revalidatePath("/tenders/archive");
+  revalidatePath(`/tenders/${id}`);
+  redirect(`/tenders/${id}`);
+}
+
+export async function deleteTenderPermanently(id: string): Promise<ActionError | undefined> {
+  const ctx = await requireAdmin();
+  const tender = await getTenderById(id);
+  if (!tender) return { error: "Tender not found." };
+  if (!tender.archivedAt) return { error: "Archive the tender before deleting it permanently." };
+
+  const { error } = await supabaseServer().from("tenders").delete().eq("id", id);
+  if (error) return { error: error.message };
+
+  await logTenderEvent({
+    tenderId: null,
+    tenderLabel: labelFor(tender),
+    actorId: ctx.userId,
+    actorName: ctx.profile.name,
+    action: "delete",
+    changes: null,
+  });
+
+  revalidatePath("/tenders/archive");
+  redirect("/tenders/archive");
+}
+
+// Plain <form action={fn.bind(null, id)}> requires a void-returning action
+// (unlike useActionState, it has nowhere to put a returned error) — these
+// wrap the real actions for that use, used where the caller has no inline
+// error UI (the archive list's Restore/Delete buttons).
+export async function restoreTenderForm(id: string): Promise<void> {
+  await restoreTender(id);
+}
+
+export async function deleteTenderPermanentlyForm(id: string): Promise<void> {
+  await deleteTenderPermanently(id);
+}
+
+// Inline quick-edit from the tender table (Result badge / a milestone date
+// cell), scoped to admins. No redirect — the caller stays on the table.
+export async function quickUpdateResult(id: string, result: string): Promise<ActionError | undefined> {
+  const ctx = await requireAdmin();
+  if (result && !(RESULT_ENUM as readonly string[]).includes(result)) return { error: "Invalid result value." };
+
+  const { data: before, error: beforeError } = await supabaseServer()
+    .from("tenders")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (beforeError || !before) return { error: "Tender not found." };
+
+  const patch = { result: result || null, updated_by: ctx.userId };
+  const { error } = await supabaseServer().from("tenders").update(patch).eq("id", id);
+  if (error) return { error: error.message };
+
+  await logTenderEvent({
+    tenderId: id,
+    tenderLabel: before.tender_no || before.product || id,
+    actorId: ctx.userId,
+    actorName: ctx.profile.name,
+    action: "update",
+    changes: diffRecords(before, patch),
+  });
+
+  revalidatePath("/");
+  revalidatePath("/tenders");
+  revalidatePath(`/tenders/${id}`);
+}
+
+export async function quickUpdateMilestone(
+  id: string,
+  key: MilestoneKey,
+  value: string
+): Promise<ActionError | undefined> {
+  const ctx = await requireAdmin();
+
+  const { data: before, error: beforeError } = await supabaseServer()
+    .from("tenders")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (beforeError || !before) return { error: "Tender not found." };
+
+  const milestones = { ...before.milestones, [key]: value || null };
+  const patch = { milestones, updated_by: ctx.userId };
+  const { error } = await supabaseServer().from("tenders").update(patch).eq("id", id);
+  if (error) return { error: error.message };
+
+  await logTenderEvent({
+    tenderId: id,
+    tenderLabel: before.tender_no || before.product || id,
+    actorId: ctx.userId,
+    actorName: ctx.profile.name,
+    action: "update",
+    changes: diffRecords(before, patch),
+  });
+
+  revalidatePath("/");
+  revalidatePath("/tenders");
+  revalidatePath(`/tenders/${id}`);
+}
+
+export async function addSelectOption(field: string, value: string): Promise<{ error?: string; value?: string }> {
+  const ctx = await requireAdmin();
+  const trimmed = value.trim();
+  if (!trimmed) return { error: "Value can't be empty." };
+
+  const { error } = await supabaseServer()
+    .from("select_options")
+    .insert({ field, value: trimmed, created_by: ctx.userId });
+  if (error && error.code !== "23505") return { error: error.message };
+
+  revalidatePath("/tenders/new");
+  revalidatePath("/tenders");
+  return { value: trimmed };
 }

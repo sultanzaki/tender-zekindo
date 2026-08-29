@@ -1,0 +1,91 @@
+.page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--zk-gray-50);
+}
+
+.card {
+  width: 100%;
+  max-width: 380px;
+  padding: 32px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 28px;
+}
+
+.brandTitle {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--color-fg1);
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-fg1);
+  margin: 0 0 6px;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: var(--color-fg3);
+  margin: 0 0 24px;
+}
+
+.fieldColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--color-fg2);
+}
+
+.input {
+  padding: 9px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--color-fg1);
+  outline: none;
+  font-family: var(--font-sans);
+}
+
+.submitButton {
+  margin-top: 18px;
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  padding: 10px 22px;
+  border-radius: var(--radius-full);
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+  width: 100%;
+}
+.submitButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.errorBanner {
+  margin-top: 14px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: var(--zk-error-light);
+  color: var(--zk-error);
+  font-size: 12.5px;
+}

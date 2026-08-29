@@ -11,8 +11,8 @@ export function DeadlinesCard({ deadlines, anchorFormatted }: { deadlines: Deadl
   return (
     <div className={shared.card} style={{ marginBottom: 24, overflow: "hidden" }}>
       <div className={shared.cardHeader}>
-        <h2 className={shared.cardTitle}>Tenggat Terdekat</h2>
-        <span className={shared.cardMeta}>Milestone jatuh tempo dalam 14 hari &middot; per {anchorFormatted}</span>
+        <h2 className={shared.cardTitle}>Upcoming Deadlines</h2>
+        <span className={shared.cardMeta}>Milestones due within 14 days &middot; as of {anchorFormatted}</span>
       </div>
       {deadlines.length > 0 ? (
         <div className={styles.scrollWrap}>
@@ -41,7 +41,7 @@ export function DeadlinesCard({ deadlines, anchorFormatted }: { deadlines: Deadl
           </table>
         </div>
       ) : (
-        <div className={shared.emptyState}>Tidak ada milestone yang jatuh tempo dalam 14 hari ke depan.</div>
+        <div className={shared.emptyState}>No milestones due within the next 14 days.</div>
       )}
     </div>
   );

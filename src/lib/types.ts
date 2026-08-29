@@ -16,15 +16,15 @@ export const MILESTONE_KEYS = [
 export type MilestoneKey = (typeof MILESTONE_KEYS)[number];
 
 export const MILESTONE_DEFS: { key: MilestoneKey; label: string }[] = [
-  { key: "regist", label: "Regist" },
+  { key: "regist", label: "Registration" },
   { key: "pq", label: "PQ" },
   { key: "technicalPq", label: "Technical PQ" },
   { key: "prebid", label: "Prebid" },
   { key: "secondPrebid", label: "Second Prebid" },
   { key: "technicalBidding", label: "Technical Bidding" },
-  { key: "sampelLab", label: "Sampel Chemical diterima di Lab Test" },
-  { key: "pengirimanBukti", label: "Pengiriman Bukti Pembayaran Lab Independent" },
-  { key: "pemasukanDokumen", label: "Pemasukan Dokumen Penawaran" },
+  { key: "sampelLab", label: "Chemical Sample Received at Lab Test" },
+  { key: "pengirimanBukti", label: "Independent Lab Payment Proof Sent" },
+  { key: "pemasukanDokumen", label: "Bid Document Submission" },
   { key: "fieldTest", label: "Field Test" },
   { key: "openBid", label: "Open Bid" },
   { key: "firstDelivery", label: "First Delivery" },
@@ -48,6 +48,16 @@ export type ResultValue = (typeof RESULT_ENUM)[number];
 
 export type Milestones = Record<MilestoneKey, string | null>;
 
+export type UserRole = "viewer" | "admin";
+
+export interface Profile {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  createdAt: string;
+}
+
 export interface Tender {
   id: string;
   rowNo: number;
@@ -59,42 +69,87 @@ export interface Tender {
   entitas: string | null;
   qty: number | null;
   oe: number | null;
+  oeCatatan: string | null;
   idrPerL: number | null;
   milestones: Milestones;
   result: string | null;
   carryOver: string | null;
   remarks: string | null;
+  remark: string | null;
+  pnl: boolean;
+  catatanInternal: string | null;
   nilaiPenawaran: number | null;
+  archivedAt: string | null;
+  createdBy: string | null;
+  createdByName: string | null;
+  updatedBy: string | null;
+  updatedByName: string | null;
+  updatedAt: string;
+}
+
+export interface DocumentType {
+  id: string;
+  label: string;
+  isDefault: boolean;
+}
+
+export interface TenderDocument {
+  documentTypeId: string;
+  label: string;
+  checked: boolean;
+  filePath: string | null;
+  fileName: string | null;
+  fileUrl: string | null;
+  updatedAt: string | null;
+}
+
+export type TenderEventAction = "create" | "update" | "archive" | "restore" | "delete";
+
+export interface TenderEventChange {
+  from: unknown;
+  to: unknown;
+}
+
+export interface TenderEvent {
+  id: string;
+  tenderId: string | null;
+  tenderLabel: string;
+  actorId: string | null;
+  actorName: string;
+  action: TenderEventAction;
+  changes: Record<string, TenderEventChange> | null;
+  createdAt: string;
 }
 
 /** Short header labels for the milestone columns on the dense tender table
  * (the long form is used in the detail timeline and the new-tender form). */
 export const MILESTONE_TABLE_HEADERS: Record<MilestoneKey, string> = {
-  regist: "Regist",
+  regist: "Registration",
   pq: "PQ",
   technicalPq: "Technical PQ",
   prebid: "Prebid",
   secondPrebid: "2nd Prebid",
-  technicalBidding: "Technical Bidding",
-  sampelLab: "Sampel di Lab",
-  pengirimanBukti: "Bukti Bayar Lab",
-  pemasukanDokumen: "Pemasukan Dok.",
+  technicalBidding: "Tech. Bidding",
+  sampelLab: "Lab Sample",
+  pengirimanBukti: "Lab Payment Proof",
+  pemasukanDokumen: "Bid Docs",
   fieldTest: "Field Test",
   openBid: "Open Bid",
   firstDelivery: "First Delivery",
 };
 
-/** Columns that can be shown/hidden via the "Kolom" menu on the tender table. */
-export const TOGGLEABLE_COLUMNS: { key: "period" | "oe" | "qty" | MilestoneKey; label: string }[] = [
-  { key: "period", label: "Periode" },
+/** Columns that can be shown/hidden via the "Columns" menu on the tender table. */
+export const TOGGLEABLE_COLUMNS: { key: "period" | "oe" | "qty" | "pnl" | MilestoneKey; label: string }[] = [
+  { key: "period", label: "Period" },
   { key: "oe", label: "OE (Rp)" },
   { key: "qty", label: "Qty" },
+  { key: "pnl", label: "P&L" },
   { key: "technicalPq", label: "Technical PQ" },
   { key: "secondPrebid", label: "Second Prebid" },
   { key: "technicalBidding", label: "Technical Bidding" },
-  { key: "sampelLab", label: "Sampel di Lab Test" },
-  { key: "pengirimanBukti", label: "Bukti Bayar Lab Independent" },
-  { key: "pemasukanDokumen", label: "Pemasukan Dokumen" },
+  { key: "sampelLab", label: "Lab Sample" },
+  { key: "pengirimanBukti", label: "Lab Payment Proof" },
+  { key: "pemasukanDokumen", label: "Bid Documents" },
   { key: "firstDelivery", label: "First Delivery" },
 ];
 
@@ -104,6 +159,7 @@ export const DEFAULT_VISIBLE_COLUMNS: VisibleColumns = {
   period: false,
   oe: false,
   qty: false,
+  pnl: false,
   regist: true,
   pq: true,
   technicalPq: false,
@@ -145,6 +201,7 @@ export interface TenderFormValues {
   entitas: string;
   qty: string;
   oe: string;
+  oeCatatan: string;
   nilaiPenawaran: string;
   milestones: Partial<Record<MilestoneKey, string>>;
 }
@@ -153,6 +210,9 @@ export interface TenderEditFormValues extends TenderFormValues {
   result: string; // "" means still running (null in the DB)
   carryOver: string;
   remarks: string;
+  remark: string;
+  pnl: boolean;
+  catatanInternal: string;
 }
 
 export interface FilterOptions {

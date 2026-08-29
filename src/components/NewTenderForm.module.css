@@ -133,6 +133,29 @@
   margin-bottom: 14px;
 }
 
+.required {
+  color: var(--zk-error);
+  font-weight: 400;
+}
+
+.fieldWarning {
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--zk-warning-text);
+}
+
+.orderWarning {
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: var(--zk-warning-light);
+  color: var(--zk-warning-text);
+  font-size: 12px;
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .milestoneGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;

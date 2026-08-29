@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { updateTender } from "@/lib/actions";
+import { archiveTender, updateTender } from "@/lib/actions";
+import { findDuplicateTenderNo, findOutOfOrderMilestones } from "@/lib/tender-logic";
 import {
   MILESTONE_DEFS,
   RESULT_ENUM,
@@ -11,6 +12,8 @@ import {
   type Tender,
   type TenderEditFormValues,
 } from "@/lib/types";
+import { AreaSelect } from "./AreaSelect";
+import { NumberInput } from "./NumberInput";
 import shared from "./shared.module.css";
 import styles from "./NewTenderForm.module.css";
 
@@ -27,18 +30,38 @@ function toFormValues(tender: Tender): TenderEditFormValues {
     entitas: tender.entitas || "",
     qty: tender.qty != null ? String(tender.qty) : "",
     oe: tender.oe != null ? String(tender.oe) : "",
+    oeCatatan: tender.oeCatatan || "",
     nilaiPenawaran: tender.nilaiPenawaran != null ? String(tender.nilaiPenawaran) : "",
     milestones,
     result: tender.result || "",
     carryOver: tender.carryOver || "",
     remarks: tender.remarks || "",
+    remark: tender.remark || "",
+    pnl: tender.pnl,
+    catatanInternal: tender.catatanInternal || "",
   };
 }
 
-export function EditTenderForm({ tender, options }: { tender: Tender; options: FilterOptions }) {
+export function EditTenderForm({
+  tender,
+  options,
+  areaOptions,
+  existingTenders,
+}: {
+  tender: Tender;
+  options: FilterOptions;
+  areaOptions: string[];
+  existingTenders: { id: string; tenderNo: string | null }[];
+}) {
   const [formData, setFormData] = useState<TenderEditFormValues>(() => toFormValues(tender));
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  const isDuplicateTenderNo = useMemo(
+    () => findDuplicateTenderNo(formData.tenderNo, existingTenders, tender.id),
+    [formData.tenderNo, existingTenders, tender.id]
+  );
+  const milestoneOrderIssues = useMemo(() => findOutOfOrderMilestones(formData.milestones), [formData.milestones]);
 
   function field<K extends keyof TenderEditFormValues>(key: K) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
@@ -57,36 +80,55 @@ export function EditTenderForm({ tender, options }: { tender: Tender; options: F
     });
   }
 
+  function handleArchive() {
+    if (!confirm("Archive this tender? It will be hidden from the dashboard and table until restored.")) return;
+    setError(null);
+    startTransition(async () => {
+      const result = await archiveTender(tender.id);
+      if (result?.error) setError(result.error);
+    });
+  }
+
   return (
     <div className={styles.page}>
-      <Link href={`/tenders/${tender.id}`} className={shared.cardMeta} style={{ display: "inline-block", marginBottom: 16 }}>
-        &larr; Batalkan, kembali ke detail
-      </Link>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <Link href={`/tenders/${tender.id}`} className={shared.cardMeta}>
+          &larr; Cancel, back to detail
+        </Link>
+        <button
+          onClick={handleArchive}
+          disabled={isPending}
+          style={{ background: "none", border: "none", color: "var(--zk-error)", fontSize: 12.5, cursor: "pointer" }}
+        >
+          Archive tender
+        </button>
+      </div>
 
       <div className={`${shared.card} ${styles.card}`}>
         <div className={styles.fieldColumn}>
           <label className={styles.label}>
-            Area
-            <select className={styles.input} value={formData.area} onChange={field("area")}>
-              <option value="">Pilih area</option>
-              {options.areas.map((a) => (
-                <option key={a} value={a}>
-                  {a}
-                </option>
-              ))}
-            </select>
+            Area <span className={styles.required}>*</span>
+            <AreaSelect
+              className={styles.input}
+              value={formData.area}
+              options={areaOptions}
+              onChange={(v) => setFormData((f) => ({ ...f, area: v }))}
+            />
           </label>
           <label className={styles.label}>
-            No. Tender
-            <input className={styles.input} value={formData.tenderNo} onChange={field("tenderNo")} placeholder="No. Tender" />
+            Tender No.
+            <input className={styles.input} value={formData.tenderNo} onChange={field("tenderNo")} placeholder="Tender number" />
+            {isDuplicateTenderNo && (
+              <span className={styles.fieldWarning}>Another tender already uses this number.</span>
+            )}
           </label>
           <label className={styles.label}>
-            Customer
+            Customer <span className={styles.required}>*</span>
             <input
               className={styles.input}
               value={formData.customer}
               onChange={field("customer")}
-              placeholder="Nama customer"
+              placeholder="Customer name"
               list="customerList"
             />
             <datalist id="customerList">
@@ -96,22 +138,22 @@ export function EditTenderForm({ tender, options }: { tender: Tender; options: F
             </datalist>
           </label>
           <label className={styles.label}>
-            Judul Paket
+            Package Title
             <textarea
               className={styles.textarea}
               value={formData.product}
               onChange={field("product")}
-              placeholder="Judul paket tender"
+              placeholder="Tender package title"
               rows={3}
             />
           </label>
           <label className={styles.label}>
-            Entitas / Konsorsium
+            Entity / Consortium
             <input
               className={styles.input}
               value={formData.entitas}
               onChange={field("entitas")}
-              placeholder="mis. ZKI atau ZKI-RGA"
+              placeholder="e.g. ZKI or ZKI-RGA"
               list="entitasList"
             />
             <datalist id="entitasList">
@@ -123,27 +165,46 @@ export function EditTenderForm({ tender, options }: { tender: Tender; options: F
           <div className={styles.fieldRow2}>
             <label className={styles.label}>
               Qty
-              <input className={styles.input} value={formData.qty} onChange={field("qty")} placeholder="mis. 12000" />
+              <NumberInput
+                className={styles.input}
+                value={formData.qty}
+                onChange={(v) => setFormData((f) => ({ ...f, qty: v }))}
+                placeholder="e.g. 12,000"
+              />
             </label>
             <label className={styles.label}>
               OE (Rp)
-              <input className={styles.input} value={formData.oe} onChange={field("oe")} placeholder="Nilai OE" />
+              <NumberInput
+                className={styles.input}
+                value={formData.oe}
+                onChange={(v) => setFormData((f) => ({ ...f, oe: v }))}
+                placeholder="OE value"
+              />
             </label>
           </div>
           <label className={styles.label}>
-            Nilai Penawaran Kita (Rp)
+            OE Note
             <input
               className={styles.input}
+              value={formData.oeCatatan}
+              onChange={field("oeCatatan")}
+              placeholder="e.g. Confidential, or a foreign-currency amount"
+            />
+          </label>
+          <label className={styles.label}>
+            Our Bid Value (Rp)
+            <NumberInput
+              className={styles.input}
               value={formData.nilaiPenawaran}
-              onChange={field("nilaiPenawaran")}
-              placeholder="Nilai penawaran"
+              onChange={(v) => setFormData((f) => ({ ...f, nilaiPenawaran: v }))}
+              placeholder="Bid value"
             />
           </label>
           <div className={styles.fieldRow2}>
             <label className={styles.label}>
               Result
               <select className={styles.input} value={formData.result} onChange={field("result")}>
-                <option value="">(Berjalan / belum ada hasil)</option>
+                <option value="">(Running / no result yet)</option>
                 {RESULT_ENUM.map((r) => (
                   <option key={r} value={r}>
                     {r}
@@ -157,7 +218,7 @@ export function EditTenderForm({ tender, options }: { tender: Tender; options: F
                 className={styles.input}
                 value={formData.carryOver}
                 onChange={field("carryOver")}
-                placeholder="mis. Lanjutan dari 2024-2025"
+                placeholder="e.g. Carried over from 2024-2025"
               />
             </label>
           </div>
@@ -167,15 +228,54 @@ export function EditTenderForm({ tender, options }: { tender: Tender; options: F
               className={styles.textarea}
               value={formData.remarks}
               onChange={field("remarks")}
-              placeholder="Catatan, ranking harga kompetitor, dsb."
+              placeholder="Notes, competitor price ranking, etc."
               rows={6}
+            />
+          </label>
+          <label className={styles.label}>
+            Remark
+            <input
+              className={styles.input}
+              value={formData.remark}
+              onChange={field("remark")}
+              placeholder="Short status note"
+            />
+          </label>
+          <div className={styles.fieldRow2}>
+            <label className={styles.label} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={formData.pnl}
+                onChange={(e) => setFormData((f) => ({ ...f, pnl: e.target.checked }))}
+              />
+              P&amp;L
+            </label>
+          </div>
+          <label className={styles.label}>
+            Internal Notes <span style={{ color: "var(--color-fg3)", fontWeight: 400 }}>(admin only)</span>
+            <textarea
+              className={styles.textarea}
+              value={formData.catatanInternal}
+              onChange={field("catatanInternal")}
+              placeholder="Internal working notes"
+              rows={3}
             />
           </label>
         </div>
 
         <div className={styles.hint} style={{ marginTop: 20 }}>
-          Tanggal milestone boleh dikosongkan jika belum diketahui.
+          Milestone dates can be left blank if not yet known.
         </div>
+        {milestoneOrderIssues.length > 0 && (
+          <div className={styles.orderWarning}>
+            {milestoneOrderIssues.map((issue, i) => (
+              <div key={i}>
+                &ldquo;{issue.laterLabel}&rdquo; is dated before &ldquo;{issue.earlierLabel}&rdquo; — double-check these
+                dates.
+              </div>
+            ))}
+          </div>
+        )}
         <div className={styles.milestoneGrid}>
           {MILESTONE_DEFS.map((d) => (
             <label key={d.key} className={styles.label}>
@@ -194,10 +294,10 @@ export function EditTenderForm({ tender, options }: { tender: Tender; options: F
 
         <div className={styles.footer}>
           <Link href={`/tenders/${tender.id}`} className={styles.backButton} style={{ textDecoration: "none" }}>
-            Batal
+            Cancel
           </Link>
           <button className={styles.nextButton} onClick={handleSubmit} disabled={isPending}>
-            {isPending ? "Menyimpan..." : "Simpan Perubahan"}
+            {isPending ? "Saving..." : "Save Changes"}
           </button>
         </div>
       </div>

@@ -1,16 +1,22 @@
 import { notFound } from "next/navigation";
-import { getAllTenders, getFilterOptions, getTenderById } from "@/lib/tenders";
+import { requireAdmin } from "@/lib/auth/dal";
+import { getAllTenders, getAreaOptions, getFilterOptions, getTenderById } from "@/lib/tenders";
 import { EditTenderForm } from "@/components/EditTenderForm";
 
 export const dynamic = "force-dynamic";
 
 export default async function EditTenderPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireAdmin();
   const { id } = await params;
   const tender = await getTenderById(id);
   if (!tender) notFound();
 
-  const allTenders = await getAllTenders();
+  const allTenders = await getAllTenders({ includeArchived: true });
   const options = getFilterOptions(allTenders);
+  const areaOptions = await getAreaOptions(allTenders);
+  const existingTenders = allTenders.map((t) => ({ id: t.id, tenderNo: t.tenderNo }));
 
-  return <EditTenderForm tender={tender} options={options} />;
+  return (
+    <EditTenderForm tender={tender} options={options} areaOptions={areaOptions} existingTenders={existingTenders} />
+  );
 }

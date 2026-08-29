@@ -1,18 +1,18 @@
-import { MILESTONE_DEFS, type MilestoneKey, type Tender } from "./types";
+import { MILESTONE_DEFS, MILESTONE_KEYS, type MilestoneKey, type Tender } from "./types";
 
-const MONTHS_ID = [
+const MONTHS_EN = [
   "Jan",
   "Feb",
   "Mar",
   "Apr",
-  "Mei",
+  "May",
   "Jun",
   "Jul",
-  "Agu",
+  "Aug",
   "Sep",
-  "Okt",
+  "Oct",
   "Nov",
-  "Des",
+  "Dec",
 ];
 
 export function todayISO(): string {
@@ -22,7 +22,7 @@ export function todayISO(): string {
 export function formatDateID(iso: string | null | undefined): string | null {
   if (!iso) return null;
   const [y, m, d] = iso.split("-").map(Number);
-  return `${d} ${MONTHS_ID[m - 1]} ${y}`;
+  return `${d} ${MONTHS_EN[m - 1]} ${y}`;
 }
 
 export function formatRupiah(n: number | string | null | undefined): string {
@@ -105,7 +105,7 @@ export function computeDeadlines(tenders: Tender[], anchor: string): DeadlineRow
       rows.push({
         tenderId: t.id,
         days: nm.diff,
-        daysLabel: nm.diff === 0 ? "H-0" : `H-${nm.diff}`,
+        daysLabel: nm.diff === 0 ? "D-0" : `D-${nm.diff}`,
         customer: t.customer || "—",
         product: t.product || "—",
         milestoneLabel: nm.label,
@@ -115,6 +115,45 @@ export function computeDeadlines(tenders: Tender[], anchor: string): DeadlineRow
     }
   }
   rows.sort((a, b) => a.days - b.days);
+  return rows;
+}
+
+export interface StalledRow {
+  tenderId: string;
+  customer: string;
+  product: string;
+  area: string;
+  period: string;
+  lastMilestoneLabel: string | null;
+  lastMilestoneDateFormatted: string | null;
+  lastMilestoneDateIso: string | null;
+}
+
+/** Active (no result yet) tenders with no future-dated milestone left to
+ * track — likely stuck waiting on a customer decision. */
+export function computeStalled(tenders: Tender[], anchor: string): StalledRow[] {
+  const rows: StalledRow[] = [];
+  for (const t of tenders) {
+    if (t.result) continue;
+    if (nextMilestone(t, anchor)) continue;
+    let last: { label: string; date: string } | null = null;
+    for (const d of MILESTONE_DEFS) {
+      const iso = t.milestones[d.key];
+      if (!iso) continue;
+      if (!last || iso > last.date) last = { label: d.label, date: iso };
+    }
+    rows.push({
+      tenderId: t.id,
+      customer: t.customer || "—",
+      product: t.product || "—",
+      area: t.area || "—",
+      period: t.period,
+      lastMilestoneLabel: last?.label ?? null,
+      lastMilestoneDateFormatted: last ? formatDateID(last.date) : null,
+      lastMilestoneDateIso: last?.date ?? null,
+    });
+  }
+  rows.sort((a, b) => (b.lastMilestoneDateIso || "").localeCompare(a.lastMilestoneDateIso || ""));
   return rows;
 }
 
@@ -133,11 +172,11 @@ export interface LossBreakdownItem {
   color: string;
 }
 
-const LOSS_CATEGORIES: { label: string; match: (r: string | null | undefined) => boolean; color: string }[] = [
-  { label: "Kalah Harga", match: (r) => r === "LOSS PRICE", color: "var(--zk-error)" },
-  { label: "Kalah Teknis", match: (r) => !!r && r.indexOf("LOSS TECHNICAL") === 0, color: "var(--zk-warning)" },
-  { label: "Kalah PQ Admin", match: (r) => r === "LOSS PQ ADMIN", color: "var(--zk-gray-500)" },
-  { label: "Kalah Regist", match: (r) => r === "LOSS REGIST", color: "var(--zk-gray-400)" },
+export const LOSS_CATEGORIES: { label: string; match: (r: string | null | undefined) => boolean; color: string }[] = [
+  { label: "Price Loss", match: (r) => r === "LOSS PRICE", color: "var(--zk-error)" },
+  { label: "Technical Loss", match: (r) => !!r && r.indexOf("LOSS TECHNICAL") === 0, color: "var(--zk-warning)" },
+  { label: "PQ Admin Loss", match: (r) => r === "LOSS PQ ADMIN", color: "var(--zk-gray-500)" },
+  { label: "Registration Loss", match: (r) => r === "LOSS REGIST", color: "var(--zk-gray-400)" },
 ];
 
 export function currentPeriod(periods: string[]): string {
@@ -151,7 +190,7 @@ export function computeStats(tenders: Tender[], period: string, anchor: string):
   const decided = periodTenders.filter((t) => t.result === "WIN" || (t.result && t.result.indexOf("LOSS") === 0));
   const wins = periodTenders.filter((t) => t.result === "WIN").length;
   const winRatePct = decided.length ? Math.round((wins / decided.length) * 100) + "%" : "—";
-  const winRateCaption = decided.length ? `${wins} menang dari ${decided.length} hasil` : "Belum ada hasil";
+  const winRateCaption = decided.length ? `${wins} won out of ${decided.length} decided` : "No results yet";
   return {
     running: activeTenders.length,
     awaiting,
@@ -182,6 +221,102 @@ export function periodsSorted(periods: (string | null | undefined)[]): string[] 
     const yearB = parseInt(b.slice(0, 4), 10);
     return yearB - yearA;
   });
+}
+
+export type SortKey =
+  | "rowNo"
+  | "area"
+  | "tenderNo"
+  | "customer"
+  | "product"
+  | "entitas"
+  | "period"
+  | "oe"
+  | "qty"
+  | "nilaiPenawaran"
+  | "pnl"
+  | "result"
+  | MilestoneKey;
+
+export type SortDirection = "asc" | "desc";
+
+function getSortValue(t: Tender, key: SortKey): string | number | null {
+  if ((MILESTONE_KEYS as readonly string[]).includes(key)) return t.milestones[key as MilestoneKey];
+  switch (key) {
+    case "rowNo":
+      return t.rowNo;
+    case "area":
+      return t.area;
+    case "tenderNo":
+      return t.tenderNo;
+    case "customer":
+      return t.customer;
+    case "product":
+      return t.product;
+    case "entitas":
+      return t.entitas;
+    case "period":
+      return t.period;
+    case "oe":
+      return t.oe;
+    case "qty":
+      return t.qty;
+    case "nilaiPenawaran":
+      return t.nilaiPenawaran;
+    case "pnl":
+      return t.pnl ? 1 : 0;
+    case "result":
+      return t.result;
+    default:
+      return null;
+  }
+}
+
+/** Nulls always sort last, regardless of direction — sensible default for a
+ * "which of these still needs a date" table rather than a strict total order. */
+export function sortTenders(tenders: Tender[], key: SortKey, direction: SortDirection): Tender[] {
+  const withValue = tenders.map((t) => ({ t, v: getSortValue(t, key) }));
+  const known = withValue.filter((x) => x.v !== null && x.v !== undefined && x.v !== "");
+  const unknown = withValue.filter((x) => x.v === null || x.v === undefined || x.v === "");
+  known.sort((a, b) => {
+    let cmp: number;
+    if (typeof a.v === "string" && typeof b.v === "string") cmp = a.v.localeCompare(b.v);
+    else cmp = (a.v as number) < (b.v as number) ? -1 : (a.v as number) > (b.v as number) ? 1 : 0;
+    return direction === "asc" ? cmp : -cmp;
+  });
+  return [...known, ...unknown].map((x) => x.t);
+}
+
+export interface MilestoneOrderIssue {
+  earlierLabel: string;
+  laterLabel: string;
+}
+
+/** Flags milestone pairs entered out of their expected chronological order
+ * (e.g. PQ dated before Registration). Advisory only — real tenders do
+ * sometimes genuinely skip around, so callers should warn, not block. */
+export function findOutOfOrderMilestones(milestones: Partial<Record<MilestoneKey, string>>): MilestoneOrderIssue[] {
+  const dated = MILESTONE_DEFS.map((d) => ({ ...d, iso: milestones[d.key] })).filter((d) => d.iso);
+  const issues: MilestoneOrderIssue[] = [];
+  for (let i = 0; i < dated.length; i++) {
+    for (let j = i + 1; j < dated.length; j++) {
+      if (dated[i].iso! > dated[j].iso!) {
+        issues.push({ earlierLabel: dated[j].label, laterLabel: dated[i].label });
+      }
+    }
+  }
+  return issues;
+}
+
+/** Case-insensitive duplicate check against other tenders' numbers (advisory). */
+export function findDuplicateTenderNo(
+  tenderNo: string,
+  tenders: { id: string; tenderNo: string | null }[],
+  excludeId?: string
+): boolean {
+  const needle = tenderNo.trim().toLowerCase();
+  if (!needle) return false;
+  return tenders.some((t) => t.id !== excludeId && (t.tenderNo || "").trim().toLowerCase() === needle);
 }
 
 export function filterTenders(tenders: Tender[], filters: {

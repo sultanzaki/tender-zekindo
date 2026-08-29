@@ -1,0 +1,93 @@
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid var(--color-divider);
+}
+.row:first-child {
+  border-top: none;
+}
+
+.checkbox {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.label {
+  flex: 1;
+  font-size: 13px;
+  color: var(--color-fg1);
+}
+
+.fileLink {
+  font-size: 12px;
+  color: var(--color-primary);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.removeLink {
+  font-size: 11.5px;
+  color: var(--zk-error);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.uploadLabel {
+  font-size: 11.5px;
+  color: var(--color-primary);
+  cursor: pointer;
+}
+.uploadLabel input {
+  display: none;
+}
+
+.addRow {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--color-divider);
+}
+
+.addInput {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 12.5px;
+  outline: none;
+}
+
+.addButton {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 6px 14px;
+  font-size: 12.5px;
+  color: var(--color-fg2);
+  cursor: pointer;
+}
+
+.addToggle {
+  font-size: 12px;
+  color: var(--color-primary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  margin-top: 12px;
+}
+
+.error {
+  font-size: 11.5px;
+  color: var(--zk-error);
+  margin-top: 6px;
+}

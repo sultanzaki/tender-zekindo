@@ -1,3 +1,4 @@
+import { requireUser } from "@/lib/auth/dal";
 import { getAllTenders } from "@/lib/tenders";
 import {
   computeDeadlines,
@@ -16,6 +17,7 @@ import shared from "@/components/shared.module.css";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
+  await requireUser();
   const tenders = await getAllTenders();
   const anchor = todayISO();
   const period = currentPeriod(periodsSorted(tenders.map((t) => t.period)));

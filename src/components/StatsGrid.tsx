@@ -5,11 +5,11 @@ export function StatsGrid({ stats, periodLabel }: { stats: DashboardStats; perio
   return (
     <div className={styles.grid}>
       <div className={styles.tile}>
-        <div className={styles.label}>Tender Berjalan</div>
+        <div className={styles.label}>Running Tenders</div>
         <div className={styles.value}>{stats.running}</div>
       </div>
       <div className={styles.tile}>
-        <div className={styles.label}>Menunggu Hasil</div>
+        <div className={styles.label}>Awaiting Result</div>
         <div className={styles.value}>{stats.awaiting}</div>
       </div>
       <div className={styles.tile}>
@@ -18,7 +18,7 @@ export function StatsGrid({ stats, periodLabel }: { stats: DashboardStats; perio
         <div className={styles.caption}>{stats.winRateCaption}</div>
       </div>
       <div className={styles.tile}>
-        <div className={styles.label}>Total Tender ({periodLabel})</div>
+        <div className={styles.label}>Total Tenders ({periodLabel})</div>
         <div className={styles.value}>{stats.periodTotal}</div>
       </div>
     </div>
