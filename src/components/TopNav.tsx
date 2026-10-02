@@ -2,11 +2,27 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { logout } from "@/lib/auth/actions";
 import type { Profile } from "@/lib/types";
 import styles from "./TopNav.module.css";
+
+/** "+ New Tender", aware of which track you are looking at.
+ *
+ * Reads the query string rather than taking a prop because the nav sits in the
+ * root layout, which cannot see a page's searchParams. Suspense-wrapped at the
+ * call site because useSearchParams suspends while the URL is resolved. */
+function NewTenderLink() {
+  const params = useSearchParams();
+  const href = params.get("track") === "downstream" ? "/tenders/new?track=downstream" : "/tenders/new";
+  return (
+    <Link href={href} className={styles.newButton}>
+      <span className={styles.newButtonFull}>+ New Tender</span>
+      <span className={styles.newButtonShort}>+ New</span>
+    </Link>
+  );
+}
 
 const NAV_ITEMS = [
   { href: "/", label: "Analytics" },
@@ -79,10 +95,16 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
 
       <div className={styles.right}>
         {isAdmin && (
-          <Link href="/tenders/new" className={styles.newButton}>
-            <span className={styles.newButtonFull}>+ New Tender</span>
-            <span className={styles.newButtonShort}>+ New</span>
-          </Link>
+          <Suspense
+            fallback={
+              <Link href="/tenders/new" className={styles.newButton}>
+                <span className={styles.newButtonFull}>+ New Tender</span>
+                <span className={styles.newButtonShort}>+ New</span>
+              </Link>
+            }
+          >
+            <NewTenderLink />
+          </Suspense>
         )}
 
         <Link href="/notifications" className={styles.iconButton} aria-label="Notifications">

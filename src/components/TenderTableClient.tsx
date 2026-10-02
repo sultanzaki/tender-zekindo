@@ -11,6 +11,7 @@ import {
   type MilestoneType,
   type Tender,
   type TenderFilters,
+  type Track,
 } from "@/lib/types";
 import { dateTone, filterTenders, formatDateID, formatRupiah, sortTenders, type SortDirection, type SortKey } from "@/lib/tender-logic";
 import { ResultBadge } from "./ResultBadge";
@@ -66,12 +67,16 @@ export function TenderTableClient({
   milestoneTypes,
   anchor,
   isAdmin,
+  track,
 }: {
   tenders: Tender[];
   options: FilterOptions;
   milestoneTypes: MilestoneType[];
   anchor: string;
   isAdmin: boolean;
+  /** The track being shown. Carried into the export link so exporting cannot
+   * silently dump the other track's tenders into the spreadsheet. */
+  track: Track;
 }) {
   const router = useRouter();
   const [filters, setFilters] = useState<TenderFilters>(DEFAULT_FILTERS);
@@ -187,9 +192,10 @@ export function TenderTableClient({
     if (filters.customer !== "all") params.set("customer", filters.customer);
     if (filters.result !== "all") params.set("result", filters.result);
     if (filters.search) params.set("search", filters.search);
+    if (track !== "upstream") params.set("track", track);
     const qs = params.toString();
     return "/tenders/export" + (qs ? `?${qs}` : "");
-  }, [filters]);
+  }, [filters, track]);
 
   function toggleSort(key: SortKey) {
     setSort((s) => {

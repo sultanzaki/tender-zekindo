@@ -6,7 +6,14 @@ import { getTenderById } from "@/lib/tenders";
 import { getTenderDocuments } from "@/lib/documents";
 import { buildDocumentSections, getTenderFileTree, type SectionDescriptor } from "@/lib/folders";
 import { getMilestoneTypes } from "@/lib/milestones";
-import { dateTone, formatDateID, formatRupiah, resolveTenderMilestones, todayISO } from "@/lib/tender-logic";
+import {
+  dateTone,
+  formatDateID,
+  formatRupiah,
+  resolveTenderMilestones,
+  todayISO,
+  type MilestoneCatalog,
+} from "@/lib/tender-logic";
 import { ResultBadge } from "@/components/ResultBadge";
 import { DocumentChecklist } from "@/components/DocumentChecklist";
 import { DocumentExplorer } from "@/components/DocumentExplorer";
@@ -41,13 +48,16 @@ export default async function TenderDetailPage({ params }: { params: Promise<{ i
   // Independent reads — issued together rather than one after the other.
   const [documents, milestoneTypes, fileTree] = await Promise.all([
     getTenderDocuments(tender.id),
-    getMilestoneTypes(),
+    // This tender's own track only: the other track's milestones are unrelated
+    // to it, and a shared catalog would show them as its milestones.
+    getMilestoneTypes(tender.track),
     getTenderFileTree(tender.id),
   ]);
 
   const anchor = todayISO();
   // This tender's own milestone order/subset, falling back to the catalog order.
-  const milestones = resolveTenderMilestones(tender, milestoneTypes);
+  const catalog: MilestoneCatalog = { [tender.track]: milestoneTypes };
+  const milestones = resolveTenderMilestones(tender, catalog);
 
   // The checklist keeps its own tree, and every milestone gets one — both in the
   // same panel. Labels come from the catalog / checklist, so a rename shows up

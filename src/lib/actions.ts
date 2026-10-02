@@ -140,7 +140,7 @@ export async function createTender(values: TenderFormValues): Promise<ActionErro
   // catalog when milestones are later added, renamed or reordered. Unknown keys
   // are dropped rather than written, so a tampered payload cannot put junk in
   // the column.
-  const catalogOrder = (await getMilestoneTypes()).map((m) => m.key);
+  const catalogOrder = (await getMilestoneTypes(values.track)).map((m) => m.key);
   const requestedOrder = (values.milestoneOrder ?? catalogOrder).filter((k) => catalogOrder.includes(k));
   const milestoneOrder = sameOrder(requestedOrder, catalogOrder) ? null : requestedOrder;
 
@@ -148,6 +148,11 @@ export async function createTender(values: TenderFormValues): Promise<ActionErro
     .from("tenders")
     .insert({
       ...toInsertPayload(values),
+      // `track` is set here and nowhere else. It is deliberately NOT part of
+      // toInsertPayload(), which updateTender also uses: a tender must never
+      // change track, because its milestone dates are keyed by that track's
+      // catalog. Switching would silently orphan every date it has.
+      track: values.track,
       milestone_order: milestoneOrder,
       period,
       created_by: ctx.userId,

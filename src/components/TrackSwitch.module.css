@@ -1,0 +1,52 @@
+/* The padding deliberately mirrors .wrap in TenderTable.module.css: the switch
+ * is rendered just above the tender table, and a 32px column that does not line
+ * up with the table's is exactly the kind of "the margin is wrong" that is
+ * obvious to the eye and invisible in code. */
+
+.bar {
+  padding: 24px 32px 0;
+}
+
+@media (max-width: 900px) {
+  .bar {
+    padding: 16px 16px 0;
+  }
+}
+
+.group {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--zk-gray-50);
+  max-width: 100%;
+}
+
+.item,
+.active {
+  padding: 6px 16px;
+  border-radius: var(--radius-full);
+  font-size: 12.5px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  color: var(--color-fg2);
+}
+
+.item:hover {
+  background: #fff;
+}
+
+.active {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+@media (max-width: 600px) {
+  .item,
+  .active {
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+}

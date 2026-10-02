@@ -4,13 +4,16 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import { createTender } from "@/lib/actions";
 import { ensureMilestoneTypeByName } from "@/lib/milestone-actions";
 import { findDuplicateTenderNo, findOutOfOrderMilestones } from "@/lib/tender-logic";
-import { type MilestoneType, type SelectOptionsMap, type TenderFormValues } from "@/lib/types";
+import { type MilestoneType, type SelectOptionsMap, type TenderFormValues, type Track } from "@/lib/types";
 import { OptionSelect } from "./OptionSelect";
 import { NumberInput } from "./NumberInput";
 import shared from "./shared.module.css";
 import styles from "./NewTenderForm.module.css";
 
 const EMPTY_FORM: TenderFormValues = {
+  // Replaced with the real track by the page — see the useState below. The form
+  // only ever CREATES a tender inside a track; a tender's track can never change.
+  track: "upstream",
   area: "",
   tenderNo: "",
   customer: "",
@@ -26,16 +29,20 @@ const EMPTY_FORM: TenderFormValues = {
 const STEP_LABELS = ["Tender Details", "Value & Entity", "Milestone Dates"];
 
 export function NewTenderForm({
+  track,
   selectOptions,
   milestoneTypes,
   existingTenders,
 }: {
+  /** The track this tender is being created in, from the list page's URL. It
+   * decides which milestone catalog the form offers, and is stored on the row. */
+  track: Track;
   selectOptions: SelectOptionsMap;
   milestoneTypes: MilestoneType[];
   existingTenders: { id: string; tenderNo: string | null }[];
 }) {
   const [step, setStep] = useState(1);
-  const [formData, setFormData] = useState<TenderFormValues>(EMPTY_FORM);
+  const [formData, setFormData] = useState<TenderFormValues>({ ...EMPTY_FORM, track });
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -72,7 +79,7 @@ export function NewTenderForm({
     setError(null);
     setCreating(true);
     startTransition(async () => {
-      const result = await ensureMilestoneTypeByName(label);
+      const result = await ensureMilestoneTypeByName(label, track);
       setCreating(false);
       const key = result.key;
       if (result.error || !key) {
@@ -82,7 +89,7 @@ export function NewTenderForm({
       setExtraTypes((types) =>
         types.some((t) => t.key === key)
           ? types
-          : [...types, { id: key, key, label, sortOrder: 0, showInTable: false }]
+          : [...types, { id: key, key, track, label, sortOrder: 0, showInTable: false }]
       );
       setOrder((o) => (o.includes(key) ? o : [...o, key]));
       setNewMilestoneLabel("");
