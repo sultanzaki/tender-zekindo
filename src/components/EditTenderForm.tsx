@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { archiveTender, updateTender } from "@/lib/actions";
 import { setTenderMilestoneOrder } from "@/lib/milestone-actions";
+import { ensureMilestoneTypeByName } from "@/lib/milestone-actions";
 import { findDuplicateTenderNo, findOutOfOrderMilestones } from "@/lib/tender-logic";
 import {
   RESULT_ENUM,
@@ -71,15 +72,49 @@ export function EditTenderForm({
   const [orderMessage, setOrderMessage] = useState<string | null>(null);
   const addSelectRef = useRef<HTMLSelectElement>(null);
 
-  const catalogByKey = useMemo(() => new Map(milestoneTypes.map((m) => [m.key, m])), [milestoneTypes]);
+  // Milestones created from this form, held locally: the catalog prop was read
+  // on the server before they existed, so without this they would be in the
+  // order array with no label to render.
+  const [extraTypes, setExtraTypes] = useState<MilestoneType[]>([]);
+  const [newMilestoneLabel, setNewMilestoneLabel] = useState("");
+  const [creating, setCreating] = useState(false);
+  const allTypes = useMemo(() => [...milestoneTypes, ...extraTypes], [milestoneTypes, extraTypes]);
+
+  const catalogByKey = useMemo(() => new Map(allTypes.map((m) => [m.key, m])), [allTypes]);
   const orderedDefs = useMemo(
     () => order.map((k) => catalogByKey.get(k)).filter((m): m is MilestoneType => !!m),
     [order, catalogByKey]
   );
   const hiddenDefs = useMemo(
-    () => milestoneTypes.filter((m) => !order.includes(m.key)),
-    [milestoneTypes, order]
+    () => allTypes.filter((m) => !order.includes(m.key)),
+    [allTypes, order]
   );
+
+  /** Creates the milestone (or reuses it if the name exists) and appends it to
+   * this tender's order. Like every other change on this page, it only takes
+   * effect for the tender when "Save milestone order" is pressed. */
+  function createMilestone() {
+    const label = newMilestoneLabel.trim();
+    if (!label) return;
+    setOrderMessage(null);
+    setCreating(true);
+    startTransition(async () => {
+      const result = await ensureMilestoneTypeByName(label);
+      setCreating(false);
+      const key = result.key;
+      if (result.error || !key) {
+        setOrderMessage(result.error ?? "Gagal membuat milestone.");
+        return;
+      }
+      setExtraTypes((types) =>
+        types.some((t) => t.key === key)
+          ? types
+          : [...types, { id: key, key, label, sortOrder: 0, showInTable: false }]
+      );
+      setOrder((o) => (o.includes(key) ? o : [...o, key]));
+      setNewMilestoneLabel("");
+    });
+  }
 
   const isDuplicateTenderNo = useMemo(
     () => findDuplicateTenderNo(formData.tenderNo, existingTenders, tender.id),
@@ -368,8 +403,8 @@ export function EditTenderForm({
           ))}
         </div>
 
-        {hiddenDefs.length > 0 && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "10px 0" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "10px 0" }}>
+          {hiddenDefs.length > 0 && (
             <select ref={addSelectRef} className={styles.input} defaultValue="">
               <option value="" disabled>
                 Add a hidden milestone…
@@ -380,11 +415,37 @@ export function EditTenderForm({
                 </option>
               ))}
             </select>
+          )}
+          {hiddenDefs.length > 0 && (
             <button type="button" className={styles.backButton} onClick={addFromSelect} disabled={orderBusy}>
               Add
             </button>
-          </div>
-        )}
+          )}
+        </div>
+
+        {/* Milestone baru dengan nama bebas, tidak terpatok katalog. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "10px 0" }}>
+          <input
+            className={styles.input}
+            value={newMilestoneLabel}
+            onChange={(e) => setNewMilestoneLabel(e.target.value)}
+            placeholder="Tulis nama milestone baru…"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                createMilestone();
+              }
+            }}
+          />
+          <button
+            type="button"
+            className={styles.backButton}
+            onClick={createMilestone}
+            disabled={orderBusy || creating || !newMilestoneLabel.trim()}
+          >
+            {creating ? "Membuat…" : "Buat milestone"}
+          </button>
+        </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
           <button type="button" className={styles.backButton} onClick={saveOrder} disabled={orderBusy}>

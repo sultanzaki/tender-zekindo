@@ -168,6 +168,51 @@ export interface Database {
         Update: Partial<Database["public"]["Tables"]["milestone_types"]["Row"]>;
         Relationships: [];
       };
+      /** Document folders — nested via parent_id. `milestone_key` marks a
+       * milestone's document tree, `document_type_id` a checklist item's.
+       * See supabase/migrations/0007_document_folders.sql. */
+      tender_folders: {
+        Row: {
+          id: string;
+          tender_id: string;
+          parent_id: string | null;
+          name: string;
+          milestone_key: string | null;
+          document_type_id: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["tender_folders"]["Row"]> & {
+          tender_id: string;
+          name: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["tender_folders"]["Row"]>;
+        Relationships: [];
+      };
+      /** One uploaded file. Its position is folder_id, or — when it sits at the
+       * root of a tree — the matching milestone_key / document_type_id. */
+      tender_files: {
+        Row: {
+          id: string;
+          tender_id: string;
+          folder_id: string | null;
+          milestone_key: string | null;
+          document_type_id: string | null;
+          file_path: string;
+          file_name: string;
+          size_bytes: number | null;
+          content_type: string | null;
+          uploaded_by: string | null;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["tender_files"]["Row"]> & {
+          tender_id: string;
+          file_path: string;
+          file_name: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["tender_files"]["Row"]>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {

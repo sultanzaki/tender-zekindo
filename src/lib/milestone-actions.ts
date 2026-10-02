@@ -50,6 +50,70 @@ export async function addMilestoneType(label: string): Promise<MilestoneActionRe
   return { key };
 }
 
+/** Dipakai form tender: bikin milestone kalau namanya baru, pakai yang sudah ada
+ * kalau namanya sudah pernah dibuat.
+ *
+ * Beda dengan addMilestoneType() milik halaman admin: di sana nama kembar itu
+ * kesalahan yang harus dilihat admin, di sini nama kembar adalah hal biasa —
+ * banyak tender memang punya milestone bernama sama — jadi yang dikembalikan
+ * adalah key yang sudah ada, bukan error. Milestone yang terarsip juga dicocokkan
+ * dan diaktifkan lagi, bukan dibikin duplikatnya.
+ */
+export async function ensureMilestoneTypeByName(label: string): Promise<MilestoneActionResult> {
+  const ctx = await requireAdmin();
+  const trimmed = label.trim();
+  if (!trimmed) return { error: "Nama milestone tidak boleh kosong." };
+
+  const slug = slugifyMilestoneKey(trimmed);
+  if (!slug) return { error: "Nama milestone harus mengandung huruf atau angka." };
+
+  // Katalognya kecil, jadi dibaca sekalian: satu query untuk mencari nama yang
+  // sama (tanpa membedakan huruf besar/kecil) DAN untuk tahu key mana yang sudah
+  // terpakai. Pencocokan dilakukan di JS, bukan dengan `ilike`, supaya tanda
+  // `%` atau `_` di nama milestone tidak diperlakukan sebagai wildcard.
+  const { data, error: readError } = await supabaseServer()
+    .from("milestone_types")
+    .select("key, label, archived_at");
+  if (readError) return { error: readError.message };
+  const rows = data ?? [];
+
+  const match = rows.find((r) => r.label.trim().toLowerCase() === trimmed.toLowerCase());
+  if (match) {
+    if (match.archived_at) {
+      const { error } = await supabaseServer()
+        .from("milestone_types")
+        .update({ archived_at: null })
+        .eq("key", match.key);
+      if (error) return { error: error.message };
+      updateTag(MILESTONE_TYPES_TAG);
+    }
+    return { key: match.key };
+  }
+
+  // Nama yang berbeda bisa menghasilkan key yang sama ("Lab Test 2" dan
+  // "Lab-Test2"). Key tidak boleh diubah setelah tertulis karena tanggal di
+  // tenders.milestones memakai key itu, jadi yang baru dibuatkan key uniknya.
+  const takenKeys = new Set(rows.map((r) => r.key));
+  let key = slug;
+  for (let n = 2; takenKeys.has(key); n++) key = `${slug}${n}`;
+
+  const { data: last } = await supabaseServer()
+    .from("milestone_types")
+    .select("sort_order")
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const sortOrder = (last?.sort_order ?? 0) + ORDER_STEP;
+
+  const { error } = await supabaseServer()
+    .from("milestone_types")
+    .insert({ key, label: trimmed, sort_order: sortOrder, created_by: ctx.userId });
+  if (error) return { error: error.message };
+
+  updateTag(MILESTONE_TYPES_TAG);
+  return { key };
+}
+
 /** Renaming only touches the label. The `key` is deliberately immutable: the
  * dates already stored in `tenders.milestones` are keyed by it, so changing it
  * would orphan every existing date for this milestone. */

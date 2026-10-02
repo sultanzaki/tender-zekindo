@@ -4,10 +4,12 @@ import { requireUser } from "@/lib/auth/dal";
 import { restoreTenderForm } from "@/lib/actions";
 import { getTenderById } from "@/lib/tenders";
 import { getTenderDocuments } from "@/lib/documents";
+import { buildDocumentSections, getTenderFileTree, type SectionDescriptor } from "@/lib/folders";
 import { getMilestoneTypes } from "@/lib/milestones";
 import { dateTone, formatDateID, formatRupiah, resolveTenderMilestones, todayISO } from "@/lib/tender-logic";
 import { ResultBadge } from "@/components/ResultBadge";
 import { DocumentChecklist } from "@/components/DocumentChecklist";
+import { DocumentExplorer } from "@/components/DocumentExplorer";
 import shared from "@/components/shared.module.css";
 import styles from "@/components/TenderDetail.module.css";
 
@@ -37,14 +39,39 @@ export default async function TenderDetailPage({ params }: { params: Promise<{ i
   const tender = await getTenderById(id);
   if (!tender) notFound();
   // Independent reads — issued together rather than one after the other.
-  const [documents, milestoneTypes] = await Promise.all([
+  const [documents, milestoneTypes, fileTree] = await Promise.all([
     getTenderDocuments(tender.id),
     getMilestoneTypes(),
+    getTenderFileTree(tender.id),
   ]);
 
   const anchor = todayISO();
   // This tender's own milestone order/subset, falling back to the catalog order.
   const milestones = resolveTenderMilestones(tender, milestoneTypes);
+
+  // The checklist keeps its own tree, and every milestone gets one — both in the
+  // same panel. Labels come from the catalog / checklist, so a rename shows up
+  // in both places.
+  const documentSections = buildDocumentSections(fileTree, [
+    ...documents.map(
+      (doc): SectionDescriptor => ({
+        id: `checklist:${doc.documentTypeId}`,
+        title: doc.label,
+        kind: "checklist",
+        milestoneKey: null,
+        documentTypeId: doc.documentTypeId,
+      })
+    ),
+    ...milestones.map(
+      (m): SectionDescriptor => ({
+        id: `milestone:${m.key}`,
+        title: m.label,
+        kind: "milestone",
+        milestoneKey: m.key,
+        documentTypeId: null,
+      })
+    ),
+  ]);
 
   return (
     <div className={styles.page}>
@@ -160,6 +187,13 @@ export default async function TenderDetailPage({ params }: { params: Promise<{ i
           <div className={`${shared.card} ${styles.panel}`}>
             <h2 className={styles.remarksTitle}>Documents</h2>
             <DocumentChecklist tenderId={tender.id} documents={documents} isAdmin={isAdmin} />
+
+            {/* Two trees in one panel: one section per checklist item, one per
+                milestone. Assembled from a single flat read — see
+                src/lib/folders.ts. */}
+            <div style={{ marginTop: 14 }}>
+              <DocumentExplorer tenderId={tender.id} sections={documentSections} isAdmin={isAdmin} />
+            </div>
           </div>
 
           {isAdmin && tender.catatanInternal && (

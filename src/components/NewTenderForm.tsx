@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState, useTransition } from "react";
 import { createTender } from "@/lib/actions";
+import { ensureMilestoneTypeByName } from "@/lib/milestone-actions";
 import { findDuplicateTenderNo, findOutOfOrderMilestones } from "@/lib/tender-logic";
 import { type MilestoneType, type SelectOptionsMap, type TenderFormValues } from "@/lib/types";
 import { OptionSelect } from "./OptionSelect";
@@ -45,15 +46,48 @@ export function NewTenderForm({
   const [order, setOrder] = useState<string[]>(() => milestoneTypes.map((m) => m.key));
   const addSelectRef = useRef<HTMLSelectElement>(null);
 
-  const catalogByKey = useMemo(() => new Map(milestoneTypes.map((m) => [m.key, m])), [milestoneTypes]);
+  // Milestones created from this form, kept locally because the catalog prop was
+  // read on the server before they existed. Without this the new milestone would
+  // be in the order array but have no label to render.
+  const [extraTypes, setExtraTypes] = useState<MilestoneType[]>([]);
+  const [newMilestoneLabel, setNewMilestoneLabel] = useState("");
+  const [creating, setCreating] = useState(false);
+  const allTypes = useMemo(() => [...milestoneTypes, ...extraTypes], [milestoneTypes, extraTypes]);
+
+  const catalogByKey = useMemo(() => new Map(allTypes.map((m) => [m.key, m])), [allTypes]);
   const orderedDefs = useMemo(
     () => order.map((k) => catalogByKey.get(k)).filter((m): m is MilestoneType => !!m),
     [order, catalogByKey]
   );
   const hiddenDefs = useMemo(
-    () => milestoneTypes.filter((m) => !order.includes(m.key)),
-    [milestoneTypes, order]
+    () => allTypes.filter((m) => !order.includes(m.key)),
+    [allTypes, order]
   );
+
+  /** Creates the milestone (or reuses it if the name exists) and puts it at the
+   * end of this tender's order. */
+  function createMilestone() {
+    const label = newMilestoneLabel.trim();
+    if (!label) return;
+    setError(null);
+    setCreating(true);
+    startTransition(async () => {
+      const result = await ensureMilestoneTypeByName(label);
+      setCreating(false);
+      const key = result.key;
+      if (result.error || !key) {
+        setError(result.error ?? "Gagal membuat milestone.");
+        return;
+      }
+      setExtraTypes((types) =>
+        types.some((t) => t.key === key)
+          ? types
+          : [...types, { id: key, key, label, sortOrder: 0, showInTable: false }]
+      );
+      setOrder((o) => (o.includes(key) ? o : [...o, key]));
+      setNewMilestoneLabel("");
+    });
+  }
 
   // ── Milestone order ─────────────────────────────────────────────────────
   function moveInOrder(index: number, delta: -1 | 1) {
@@ -270,8 +304,8 @@ export function NewTenderForm({
               ))}
             </div>
 
-            {hiddenDefs.length > 0 && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              {hiddenDefs.length > 0 && (
                 <select ref={addSelectRef} className={styles.input} defaultValue="">
                   <option value="" disabled>
                     Add a milestone…
@@ -282,11 +316,37 @@ export function NewTenderForm({
                     </option>
                   ))}
                 </select>
+              )}
+              {hiddenDefs.length > 0 && (
                 <button type="button" className={styles.backButton} onClick={addFromSelect} disabled={isPending}>
                   Add
                 </button>
-              </div>
-            )}
+              )}
+            </div>
+
+            {/* Milesone baru: namanya bebas, tidak terpatok daftar di atas. */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+              <input
+                className={styles.input}
+                value={newMilestoneLabel}
+                onChange={(e) => setNewMilestoneLabel(e.target.value)}
+                placeholder="Tulis nama milestone baru…"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    createMilestone();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className={styles.backButton}
+                onClick={createMilestone}
+                disabled={isPending || creating || !newMilestoneLabel.trim()}
+              >
+                {creating ? "Membuat…" : "Buat milestone"}
+              </button>
+            </div>
 
             <div className={styles.hint}>Dates can be left blank if not yet known.</div>
             {milestoneOrderIssues.length > 0 && (
