@@ -9,9 +9,8 @@ import type { Profile } from "@/lib/types";
 import styles from "./TopNav.module.css";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Dashboard" },
+  { href: "/", label: "Analytics" },
   { href: "/tenders", label: "Tenders" },
-  { href: "/analytics", label: "Analytics" },
 ] as const;
 
 function initials(name: string): string {
