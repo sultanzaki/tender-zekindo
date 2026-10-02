@@ -187,6 +187,10 @@ export interface TenderFormValues {
   oeCatatan: string;
   nilaiPenawaran: string;
   milestones: Record<string, string>;
+  /** The tender's milestone order/subset. Sent by the new-tender form so the
+   * choice is stored at creation time; the edit form omits it because it saves
+   * through setTenderMilestoneOrder() instead. */
+  milestoneOrder?: string[];
 }
 
 export interface TenderEditFormValues extends TenderFormValues {

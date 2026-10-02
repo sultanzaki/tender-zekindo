@@ -6,6 +6,7 @@ import { supabaseServer } from "./supabase-server";
 import { requireAdmin } from "./auth/dal";
 import { getTenderById } from "./tenders";
 import { DOCUMENT_BUCKET } from "./documents";
+import { getMilestoneTypes } from "./milestones";
 import { TENDERS_TAG } from "./cache-tags";
 import { currentPeriod, periodsSorted } from "./tender-logic";
 import {
@@ -116,6 +117,11 @@ function toInsertPayload(values: TenderFormValues, milestoneBase: Milestones = {
   };
 }
 
+/** True when two milestone order arrays list the same keys in the same order. */
+function sameOrder(a: string[], b: string[]) {
+  return a.length === b.length && a.every((key, i) => key === b[i]);
+}
+
 export async function createTender(values: TenderFormValues): Promise<ActionError | undefined> {
   const ctx = await requireAdmin();
 
@@ -129,10 +135,20 @@ export async function createTender(values: TenderFormValues): Promise<ActionErro
     return { error: e instanceof Error ? e.message : "Failed to determine period." };
   }
 
+  // Milestone order chosen on the new-tender form. Stored as NULL when it still
+  // matches the catalog, so a tender nobody customised keeps following the
+  // catalog when milestones are later added, renamed or reordered. Unknown keys
+  // are dropped rather than written, so a tampered payload cannot put junk in
+  // the column.
+  const catalogOrder = (await getMilestoneTypes()).map((m) => m.key);
+  const requestedOrder = (values.milestoneOrder ?? catalogOrder).filter((k) => catalogOrder.includes(k));
+  const milestoneOrder = sameOrder(requestedOrder, catalogOrder) ? null : requestedOrder;
+
   const { data, error } = await supabaseServer()
     .from("tenders")
     .insert({
       ...toInsertPayload(values),
+      milestone_order: milestoneOrder,
       period,
       created_by: ctx.userId,
       updated_by: ctx.userId,
