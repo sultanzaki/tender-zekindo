@@ -17,6 +17,7 @@ import { LossReasonTrendChart } from "@/components/charts/LossReasonTrendChart";
 import { GroupWinRateChart } from "@/components/charts/GroupWinRateChart";
 import { PipelineValueChart } from "@/components/charts/PipelineValueChart";
 import { AnalyticsFilters } from "@/components/AnalyticsFilters";
+import { TRACK_LABELS, type Track } from "@/lib/types";
 import shared from "@/components/shared.module.css";
 import chartStyles from "@/components/charts/charts.module.css";
 
@@ -25,17 +26,26 @@ export const dynamic = "force-dynamic";
 /** The landing page IS the analytics dashboard. The old Deadlines / Stats / Loss
  * Breakdown widgets were dropped in favour of this (the "due soon" list still
  * lives on /notifications and in the nav bell). Everything here answers to the
- * area and period filters, which live in the URL so a filtered view can be
- * bookmarked and reached with the Back button. */
+ * area, period and track filters, which live in the URL so a filtered view can
+ * be bookmarked and reached with the Back button. */
 export default async function AnalyticsDashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ area?: string; period?: string }>;
+  searchParams: Promise<{ area?: string; period?: string; track?: string }>;
 }) {
   await requireUser();
   const params = await searchParams;
 
-  const allTenders = await getAllTenders();
+  // The default here differs from the tender list on purpose: this is an
+  // overview, so it starts on BOTH tracks and you narrow it yourself. A stale
+  // bookmark naming a track we do not recognise falls back to both rather than
+  // to an empty dashboard.
+  const track: Track | "all" =
+    params.track === "upstream" || params.track === "downstream" ? params.track : "all";
+
+  // Scoped to the chosen track first: the area/period options offered, and the
+  // "X of Y" denominator, must describe the track you are actually looking at.
+  const allTenders = await getAllTenders({ track });
   const options = getFilterOptions(allTenders);
 
   // A value that no longer exists is treated as "no filter" rather than as an
@@ -69,6 +79,7 @@ export default async function AnalyticsDashboardPage({
   };
 
   const activeFilters = [
+    track === "all" ? null : `Track: ${TRACK_LABELS[track]}`,
     area === "all" ? null : `Area: ${area}`,
     period === "all" ? null : `Period: ${period}`,
   ].filter((v): v is string => !!v);
@@ -86,7 +97,13 @@ export default async function AnalyticsDashboardPage({
         )}
       </p>
 
-      <AnalyticsFilters areas={options.areas} periods={options.periods} area={area} period={period} />
+      <AnalyticsFilters
+        areas={options.areas}
+        periods={options.periods}
+        area={area}
+        period={period}
+        track={track}
+      />
 
       <KpiCards data={kpiData} />
 

@@ -15,6 +15,7 @@ import {
   type MilestoneCatalog,
 } from "@/lib/tender-logic";
 import { ResultBadge } from "@/components/ResultBadge";
+import { TrackBadge } from "@/components/TrackBadge";
 import { DocumentChecklist } from "@/components/DocumentChecklist";
 import { DocumentExplorer } from "@/components/DocumentExplorer";
 import shared from "@/components/shared.module.css";
@@ -126,6 +127,7 @@ export default async function TenderDetailPage({ params }: { params: Promise<{ i
             <div className={styles.customer}>{tender.customer || "—"}</div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <TrackBadge track={tender.track} />
             {tender.pnl && <span className={styles.pnlBadge}>P&amp;L</span>}
             <ResultBadge result={tender.result} />
           </div>
