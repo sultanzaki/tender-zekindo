@@ -4,6 +4,7 @@ import { deleteTenderPermanentlyForm, restoreTenderForm } from "@/lib/actions";
 import { getArchivedTenders } from "@/lib/tenders";
 import { formatDateID } from "@/lib/tender-logic";
 import { ConfirmButton } from "@/components/ConfirmButton";
+import { TrackBadge } from "@/components/TrackBadge";
 import shared from "@/components/shared.module.css";
 import tableStyles from "@/components/TenderTable.module.css";
 import styles from "@/components/ArchivedTable.module.css";
@@ -41,7 +42,9 @@ export default async function ArchivedTendersPage() {
                 {tenders.map((t) => (
                   <tr key={t.id} className={tableStyles.bodyRow} style={{ cursor: "default" }}>
                     <td className={tableStyles.td}>{t.area}</td>
-                    <td className={`${tableStyles.td} ${tableStyles.tdNoWrap}`}>{t.tenderNo || "—"}</td>
+                    <td className={`${tableStyles.td} ${tableStyles.tdNoWrap}`}>
+                      {t.tenderNo || "—"} <TrackBadge track={t.track} />
+                    </td>
                     <td className={`${tableStyles.td} ${tableStyles.tdEllipsis}`} style={{ maxWidth: 200 }} title={t.customer}>
                       <Link href={`/tenders/${t.id}`}>{t.customer}</Link>
                     </td>

@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth/dal";
 import { getAllTenders } from "@/lib/tenders";
 import { getMilestoneCatalog } from "@/lib/milestones";
 import { computeDeadlines, computeStalled, formatDateID, todayISO, REMINDER_DAYS } from "@/lib/tender-logic";
+import { TrackBadge } from "@/components/TrackBadge";
 import shared from "@/components/shared.module.css";
 import styles from "./notifications.module.css";
 
@@ -52,6 +53,7 @@ export default async function NotificationsPage() {
             {reminders.map((row) => (
               <Link key={row.tenderId} href={`/tenders/${row.tenderId}`} className={styles.row}>
                 <span className={`${shared.badge} ${shared.badgeError}`}>{row.daysLabel}</span>
+                <TrackBadge track={row.track} />
                 <span className={styles.rowMain}>
                   <span className={styles.rowTitle}>{row.customer}</span>
                   <span className={styles.rowSub} title={row.product}>
@@ -81,6 +83,7 @@ export default async function NotificationsPage() {
             {dueSoon.map((row) => (
               <Link key={row.tenderId} href={`/tenders/${row.tenderId}`} className={styles.row}>
                 <span className={`${shared.badge} ${shared.badgeWarning}`}>{row.daysLabel}</span>
+                <TrackBadge track={row.track} />
                 <span className={styles.rowMain}>
                   <span className={styles.rowTitle}>{row.customer}</span>
                   <span className={styles.rowSub} title={row.product}>

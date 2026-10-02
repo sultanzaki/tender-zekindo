@@ -189,6 +189,9 @@ export interface DeadlineRow {
   milestoneLabel: string;
   dateFormatted: string;
   urgent: boolean;
+  /** Carried so /notifications can mark a downstream tender: that page lists
+   * both tracks together, and the rows are otherwise indistinguishable. */
+  track: Track;
 }
 
 /** The reminder window: a milestone this close is something to act on now
@@ -215,6 +218,7 @@ export function computeDeadlines(tenders: Tender[], anchor: string, catalog?: Mi
         milestoneLabel: nm.label,
         dateFormatted: formatDateID(nm.date) ?? "—",
         urgent: nm.diff <= REMINDER_DAYS,
+        track: t.track,
       });
     }
   }

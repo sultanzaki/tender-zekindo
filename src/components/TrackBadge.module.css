@@ -1,0 +1,16 @@
+/* Downstream marker. Cool tone on purpose: the result badges next to it are
+   green/red/amber, so this one must not read as a status. */
+.badge {
+  background: rgba(56, 122, 214, 0.13);
+  color: #2f6fd0;
+  border: 1px solid rgba(56, 122, 214, 0.28);
+  white-space: nowrap;
+}
+
+@media (prefers-color-scheme: dark) {
+  .badge {
+    background: rgba(96, 165, 250, 0.16);
+    color: #93c5fd;
+    border-color: rgba(96, 165, 250, 0.32);
+  }
+}

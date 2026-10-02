@@ -2,8 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
+import { TRACK_LABELS, TRACKS, type Track } from "@/lib/types";
 
-/** Area + period filter for the analytics dashboard.
+/** Track + area + period filter for the analytics dashboard.
  *
  * The selection lives in the URL (not in component state) so the filtered view
  * can be bookmarked, shared, and reached with the Back button — and so the page
@@ -13,17 +14,22 @@ export function AnalyticsFilters({
   periods,
   area,
   period,
+  track,
 }: {
   areas: string[];
   periods: string[];
   area: string;
   period: string;
+  /** "all" is a normal value here (both tracks side by side), not a missing
+   * one — unlike the tender list, where a page always shows exactly one. */
+  track: Track | "all";
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
-  function apply(nextArea: string, nextPeriod: string) {
+  function apply(nextTrack: Track | "all", nextArea: string, nextPeriod: string) {
     const params = new URLSearchParams();
+    if (nextTrack !== "all") params.set("track", nextTrack);
     if (nextArea !== "all") params.set("area", nextArea);
     if (nextPeriod !== "all") params.set("period", nextPeriod);
     const query = params.toString();
@@ -41,7 +47,7 @@ export function AnalyticsFilters({
     color: "inherit",
   } as const;
 
-  const isFiltered = area !== "all" || period !== "all";
+  const isFiltered = track !== "all" || area !== "all" || period !== "all";
 
   return (
     <div
@@ -55,8 +61,30 @@ export function AnalyticsFilters({
       }}
     >
       <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
+        Track
+        <select
+          value={track}
+          style={selectStyle}
+          disabled={pending}
+          onChange={(e) => apply(e.target.value as Track | "all", area, period)}
+        >
+          <option value="all">Both tracks</option>
+          {TRACKS.map((t) => (
+            <option key={t} value={t}>
+              {TRACK_LABELS[t]}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
         Area
-        <select value={area} style={selectStyle} disabled={pending} onChange={(e) => apply(e.target.value, period)}>
+        <select
+          value={area}
+          style={selectStyle}
+          disabled={pending}
+          onChange={(e) => apply(track, e.target.value, period)}
+        >
           <option value="all">All areas</option>
           {areas.map((a) => (
             <option key={a} value={a}>
@@ -68,7 +96,12 @@ export function AnalyticsFilters({
 
       <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
         Period
-        <select value={period} style={selectStyle} disabled={pending} onChange={(e) => apply(area, e.target.value)}>
+        <select
+          value={period}
+          style={selectStyle}
+          disabled={pending}
+          onChange={(e) => apply(track, area, e.target.value)}
+        >
           <option value="all">All periods</option>
           {periods.map((p) => (
             <option key={p} value={p}>
@@ -81,7 +114,7 @@ export function AnalyticsFilters({
       {isFiltered && (
         <button
           type="button"
-          onClick={() => apply("all", "all")}
+          onClick={() => apply("all", "all", "all")}
           disabled={pending}
           style={{
             fontSize: 12.5,

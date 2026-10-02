@@ -13,21 +13,25 @@ export default async function NewTenderPage({
 }) {
   await requireAdmin();
   const sp = await searchParams;
-  // The form is reached from the list of one track, so it inherits that track
-  // from the URL. The track is fixed here and never changes afterwards.
-  const track = trackFromParam(sp.track);
-  // Only this track's tenders are offered as "existing tender no" suggestions.
-  const tenders = await getAllTenders({ includeArchived: true, track });
-  const [selectOptions, milestoneTypes] = await Promise.all([
+  // The form is reached from the list of one track, so it OPENS on that track —
+  // but it no longer fixes it: the form has its own picker. Creating is the only
+  // moment a track is chosen; after that it never changes.
+  const initialTrack = trackFromParam(sp.track);
+  // Both catalogs, so the picker can swap the milestone list without a round
+  // trip and without losing anything already typed. Tender numbers from both
+  // tracks are offered, so a number reused across tracks is still caught.
+  const tenders = await getAllTenders({ includeArchived: true, track: "all" });
+  const [selectOptions, upstreamCatalog, downstreamCatalog] = await Promise.all([
     getSelectOptions(tenders),
-    getMilestoneTypes(track),
+    getMilestoneTypes("upstream"),
+    getMilestoneTypes("downstream"),
   ]);
   const existingTenders = tenders.map((t) => ({ id: t.id, tenderNo: t.tenderNo }));
   return (
     <NewTenderForm
-      track={track}
+      initialTrack={initialTrack}
       selectOptions={selectOptions}
-      milestoneTypes={milestoneTypes}
+      catalogs={{ upstream: upstreamCatalog, downstream: downstreamCatalog }}
       existingTenders={existingTenders}
     />
   );
