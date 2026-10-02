@@ -2,7 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { supabaseServer } from "./supabase-server";
 import type { TenderRow } from "./database.types";
-import type { FilterOptions, Tender } from "./types";
+import type { FilterOptions, SelectOptionsMap, Tender } from "./types";
 import { distinctSorted, periodsSorted } from "./tender-logic";
 import { getProfilesByIds } from "./users";
 
@@ -91,12 +91,21 @@ export function getFilterOptions(tenders: Tender[]): FilterOptions {
   };
 }
 
-/** Area options available in the New/Edit Tender form: existing tender
- * areas plus anything an admin has added via addSelectOption("area", ...),
- * even if no tender uses it yet. */
-export async function getAreaOptions(tenders: Tender[]): Promise<string[]> {
-  const { data, error } = await supabaseServer().from("select_options").select("value").eq("field", "area");
-  if (error) throw new Error(`Failed to load area options: ${error.message}`);
-  const fromOptions = (data ?? []).map((r) => r.value);
-  return distinctSorted([...tenders.map((t) => t.area), ...fromOptions]);
+/** Dropdown options for every extendable field (Area, Customer, Entity):
+ * existing tender values plus anything an admin added via
+ * addSelectOption(), even if no tender uses it yet. */
+export async function getSelectOptions(tenders: Tender[]): Promise<SelectOptionsMap> {
+  const { data, error } = await supabaseServer().from("select_options").select("field, value");
+  if (error) throw new Error(`Failed to load select options: ${error.message}`);
+
+  const fromOptions: Record<string, string[]> = {};
+  for (const row of data ?? []) {
+    (fromOptions[row.field] ??= []).push(row.value);
+  }
+
+  return {
+    area: distinctSorted([...tenders.map((t) => t.area), ...(fromOptions.area ?? [])]),
+    customer: distinctSorted([...tenders.map((t) => t.customer), ...(fromOptions.customer ?? [])]),
+    entitas: distinctSorted([...tenders.map((t) => t.entitas), ...(fromOptions.entitas ?? [])]),
+  };
 }

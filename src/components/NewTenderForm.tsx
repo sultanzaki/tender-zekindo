@@ -3,8 +3,8 @@
 import { useMemo, useState, useTransition } from "react";
 import { createTender } from "@/lib/actions";
 import { findDuplicateTenderNo, findOutOfOrderMilestones } from "@/lib/tender-logic";
-import { MILESTONE_DEFS, type FilterOptions, type MilestoneKey, type TenderFormValues } from "@/lib/types";
-import { AreaSelect } from "./AreaSelect";
+import { MILESTONE_DEFS, type MilestoneKey, type SelectOptionsMap, type TenderFormValues } from "@/lib/types";
+import { OptionSelect } from "./OptionSelect";
 import { NumberInput } from "./NumberInput";
 import shared from "./shared.module.css";
 import styles from "./NewTenderForm.module.css";
@@ -25,12 +25,10 @@ const EMPTY_FORM: TenderFormValues = {
 const STEP_LABELS = ["Tender Details", "Value & Entity", "Milestone Dates"];
 
 export function NewTenderForm({
-  options,
-  areaOptions,
+  selectOptions,
   existingTenders,
 }: {
-  options: FilterOptions;
-  areaOptions: string[];
+  selectOptions: SelectOptionsMap;
   existingTenders: { id: string; tenderNo: string | null }[];
 }) {
   const [step, setStep] = useState(1);
@@ -82,11 +80,14 @@ export function NewTenderForm({
           <div className={styles.fieldColumn}>
             <label className={styles.label}>
               Area <span className={styles.required}>*</span>
-              <AreaSelect
+              <OptionSelect
+                field="area"
+                label="Area"
                 className={styles.input}
                 value={formData.area}
-                options={areaOptions}
+                options={selectOptions.area}
                 onChange={(v) => setFormData((f) => ({ ...f, area: v }))}
+                required
               />
             </label>
             <label className={styles.label}>
@@ -103,18 +104,15 @@ export function NewTenderForm({
             </label>
             <label className={styles.label}>
               Customer <span className={styles.required}>*</span>
-              <input
+              <OptionSelect
+                field="customer"
+                label="Customer"
                 className={styles.input}
                 value={formData.customer}
-                onChange={field("customer")}
-                placeholder="Customer name"
-                list="customerList"
+                options={selectOptions.customer}
+                onChange={(v) => setFormData((f) => ({ ...f, customer: v }))}
+                required
               />
-              <datalist id="customerList">
-                {options.customers.map((c) => (
-                  <option key={c} value={c} />
-                ))}
-              </datalist>
             </label>
             <label className={styles.label}>
               Package Title
@@ -133,18 +131,14 @@ export function NewTenderForm({
           <div className={styles.fieldColumn}>
             <label className={styles.label}>
               Entity / Consortium
-              <input
+              <OptionSelect
+                field="entitas"
+                label="Entity / Consortium"
                 className={styles.input}
                 value={formData.entitas}
-                onChange={field("entitas")}
-                placeholder="e.g. ZKI or ZKI-RGA"
-                list="entitasList"
+                options={selectOptions.entitas}
+                onChange={(v) => setFormData((f) => ({ ...f, entitas: v }))}
               />
-              <datalist id="entitasList">
-                {options.entitasList.map((e) => (
-                  <option key={e} value={e} />
-                ))}
-              </datalist>
             </label>
             <div className={styles.fieldRow2}>
               <label className={styles.label}>

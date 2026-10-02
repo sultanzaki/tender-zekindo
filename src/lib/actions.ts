@@ -5,10 +5,13 @@ import { redirect } from "next/navigation";
 import { supabaseServer } from "./supabase-server";
 import { requireAdmin } from "./auth/dal";
 import { getTenderById } from "./tenders";
+import { DOCUMENT_BUCKET } from "./documents";
 import { currentPeriod, periodsSorted } from "./tender-logic";
 import {
+  EXTENDABLE_FIELDS,
   MILESTONE_KEYS,
   RESULT_ENUM,
+  type ExtendableField,
   type Milestones,
   type MilestoneKey,
   type Tender,
@@ -240,6 +243,61 @@ export async function restoreTender(id: string): Promise<ActionError | undefined
   redirect(`/tenders/${id}`);
 }
 
+/** Removes every object under `<tenderId>/` in the private documents bucket.
+ * Without this a permanent delete orphans the files: the `tender_documents`
+ * rows cascade away with the tender, but the Storage objects do not.
+ * Best-effort — a Storage hiccup must not block the delete the user asked
+ * for. */
+async function deleteTenderStorageFiles(tenderId: string): Promise<void> {
+  try {
+    const client = supabaseServer();
+    const { data, error } = await client.storage.from(DOCUMENT_BUCKET).list(tenderId);
+    if (error || !data?.length) return;
+    const paths = data.filter((entry) => entry.id).map((entry) => `${tenderId}/${entry.name}`);
+    if (paths.length) await client.storage.from(DOCUMENT_BUCKET).remove(paths);
+  } catch (e) {
+    console.error(`Failed to clean up Storage files for tender ${tenderId}:`, e);
+  }
+}
+
+export interface BulkResult {
+  error?: string;
+  count?: number;
+}
+
+/** One audit event per tender, in a single insert. Rows must still exist when
+ * `tender_id` is set; pass `detachIds` when they're already deleted. */
+async function logBulkEvents(
+  targets: { id: string; tender_no: string | null; product: string | null }[],
+  ctx: { userId: string; profile: { name: string } },
+  action: TenderEventAction,
+  detachIds = false
+): Promise<void> {
+  if (!targets.length) return;
+  const { error } = await supabaseServer()
+    .from("tender_events")
+    .insert(
+      targets.map((t) => ({
+        tender_id: detachIds ? null : t.id,
+        tender_label: t.tender_no || t.product || t.id,
+        actor_id: ctx.userId,
+        actor_name: ctx.profile.name,
+        action,
+        changes: null,
+      }))
+    );
+  if (error) console.error("Failed to write bulk tender_events rows:", error.message);
+}
+
+async function loadBulkTargets(ids: string[]) {
+  const { data, error } = await supabaseServer()
+    .from("tenders")
+    .select("id, tender_no, product")
+    .in("id", ids);
+  if (error) throw new Error(`Failed to load tenders: ${error.message}`);
+  return data ?? [];
+}
+
 export async function deleteTenderPermanently(id: string): Promise<ActionError | undefined> {
   const ctx = await requireAdmin();
   const tender = await getTenderById(id);
@@ -248,6 +306,8 @@ export async function deleteTenderPermanently(id: string): Promise<ActionError |
 
   const { error } = await supabaseServer().from("tenders").delete().eq("id", id);
   if (error) return { error: error.message };
+
+  await deleteTenderStorageFiles(id);
 
   await logTenderEvent({
     tenderId: null,
@@ -260,6 +320,56 @@ export async function deleteTenderPermanently(id: string): Promise<ActionError |
 
   revalidatePath("/tenders/archive");
   redirect("/tenders/archive");
+}
+
+/** Bulk archive from the tender table. Reversible (Restore lives on
+ * /tenders/archive), so this is the safe bulk default. */
+export async function bulkArchiveTenders(ids: string[]): Promise<BulkResult> {
+  const ctx = await requireAdmin();
+  if (!ids.length) return { error: "No tenders selected." };
+
+  const { error } = await supabaseServer()
+    .from("tenders")
+    .update({ archived_at: new Date().toISOString(), updated_by: ctx.userId })
+    .in("id", ids);
+  if (error) return { error: `Failed to archive: ${error.message}` };
+
+  await logBulkEvents(await loadBulkTargets(ids), ctx, "archive");
+
+  revalidatePath("/");
+  revalidatePath("/tenders");
+  revalidatePath("/tenders/archive");
+  return { count: ids.length };
+}
+
+/** Bulk permanent delete from the tender table: row, Storage files, and an
+ * audit event per tender. Deliberately does NOT require a prior archive — the
+ * UI gates it behind a typed confirmation instead, since requiring two steps
+ * for a batch the user explicitly selected defeats the point of bulk actions.
+ * Use bulkArchiveTenders when the intent is reversible. */
+export async function bulkDeleteTenders(ids: string[]): Promise<BulkResult> {
+  const ctx = await requireAdmin();
+  if (!ids.length) return { error: "No tenders selected." };
+
+  let targets;
+  try {
+    targets = await loadBulkTargets(ids);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to load tenders." };
+  }
+  if (!targets.length) return { error: "No matching tenders found." };
+
+  const targetIds = targets.map((t) => t.id);
+  const { error } = await supabaseServer().from("tenders").delete().in("id", targetIds);
+  if (error) return { error: `Failed to delete: ${error.message}` };
+
+  for (const targetId of targetIds) await deleteTenderStorageFiles(targetId);
+  await logBulkEvents(targets, ctx, "delete", true);
+
+  revalidatePath("/");
+  revalidatePath("/tenders");
+  revalidatePath("/tenders/archive");
+  return { count: targetIds.length };
 }
 
 // Plain <form action={fn.bind(null, id)}> requires a void-returning action
@@ -342,10 +452,13 @@ export async function addSelectOption(field: string, value: string): Promise<{ e
   const ctx = await requireAdmin();
   const trimmed = value.trim();
   if (!trimmed) return { error: "Value can't be empty." };
+  if (!(EXTENDABLE_FIELDS as readonly string[]).includes(field)) {
+    return { error: `"${field}" is not an extendable dropdown field.` };
+  }
 
   const { error } = await supabaseServer()
     .from("select_options")
-    .insert({ field, value: trimmed, created_by: ctx.userId });
+    .insert({ field: field as ExtendableField, value: trimmed, created_by: ctx.userId });
   if (error && error.code !== "23505") return { error: error.message };
 
   revalidatePath("/tenders/new");
