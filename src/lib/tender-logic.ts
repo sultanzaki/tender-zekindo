@@ -214,21 +214,6 @@ export function computeStalled(tenders: Tender[], anchor: string, catalog?: Mile
   return rows;
 }
 
-export interface DashboardStats {
-  running: number;
-  awaiting: number;
-  winRatePct: string;
-  winRateCaption: string;
-  periodTotal: number;
-}
-
-export interface LossBreakdownItem {
-  label: string;
-  count: number;
-  pct: number;
-  color: string;
-}
-
 export const LOSS_CATEGORIES: { label: string; match: (r: string | null | undefined) => boolean; color: string }[] = [
   { label: "Price Loss", match: (r) => r === "LOSS PRICE", color: "var(--zk-error)" },
   { label: "Technical Loss", match: (r) => !!r && r.indexOf("LOSS TECHNICAL") === 0, color: "var(--zk-warning)" },
@@ -238,39 +223,6 @@ export const LOSS_CATEGORIES: { label: string; match: (r: string | null | undefi
 
 export function currentPeriod(periods: string[]): string {
   return periods[0] || "";
-}
-
-export function computeStats(
-  tenders: Tender[],
-  period: string,
-  anchor: string,
-  catalog?: MilestoneType[]
-): DashboardStats {
-  const activeTenders = tenders.filter((t) => !t.result);
-  const awaiting = activeTenders.filter((t) => !nextMilestone(t, anchor, catalog)).length;
-  const periodTenders = tenders.filter((t) => t.period === period);
-  const decided = periodTenders.filter((t) => t.result === "WIN" || (t.result && t.result.indexOf("LOSS") === 0));
-  const wins = periodTenders.filter((t) => t.result === "WIN").length;
-  const winRatePct = decided.length ? Math.round((wins / decided.length) * 100) + "%" : "—";
-  const winRateCaption = decided.length ? `${wins} won out of ${decided.length} decided` : "No results yet";
-  return {
-    running: activeTenders.length,
-    awaiting,
-    winRatePct,
-    winRateCaption,
-    periodTotal: periodTenders.length,
-  };
-}
-
-export function computeLossBreakdown(tenders: Tender[], period: string): LossBreakdownItem[] {
-  const periodTenders = tenders.filter((t) => t.period === period);
-  const counts = LOSS_CATEGORIES.map((c) => ({
-    label: c.label,
-    color: c.color,
-    count: periodTenders.filter((t) => c.match(t.result)).length,
-  }));
-  const max = Math.max(1, ...counts.map((c) => c.count));
-  return counts.map((c) => ({ ...c, pct: Math.round((c.count / max) * 100) }));
 }
 
 export function distinctSorted(values: (string | null | undefined)[]): string[] {
