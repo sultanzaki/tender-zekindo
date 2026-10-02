@@ -6,16 +6,11 @@ import { useRouter } from "next/navigation";
 import { bulkArchiveTenders, bulkDeleteTenders, quickUpdateMilestone, quickUpdateResult } from "@/lib/actions";
 import {
   DEFAULT_FILTERS,
-  DEFAULT_VISIBLE_COLUMNS,
-  MILESTONE_DEFS,
-  MILESTONE_TABLE_HEADERS,
   RESULT_ENUM,
-  TOGGLEABLE_COLUMNS,
   type FilterOptions,
-  type MilestoneKey,
+  type MilestoneType,
   type Tender,
   type TenderFilters,
-  type VisibleColumns,
 } from "@/lib/types";
 import { dateTone, filterTenders, formatDateID, formatRupiah, sortTenders, type SortDirection, type SortKey } from "@/lib/tender-logic";
 import { ResultBadge } from "./ResultBadge";
@@ -30,13 +25,34 @@ const DATE_TONE_CLASS = {
   normal: styles.dateNormal,
 };
 
-const isMilestoneToggleable = (key: string) => TOGGLEABLE_COLUMNS.some((c) => c.key === key);
+/** Non-milestone columns that the Columns menu can toggle. */
+const FIELD_TOGGLES: { key: string; label: string }[] = [
+  { key: "period", label: "Period" },
+  { key: "oe", label: "OE (Rp)" },
+  { key: "qty", label: "Qty" },
+  { key: "pnl", label: "P&L" },
+];
+
+const FIELD_TOGGLE_DEFAULTS: Record<string, boolean> = {
+  period: false,
+  oe: false,
+  qty: false,
+  pnl: false,
+};
+
+/** Milestone labels are admin-authored and can be long ("Chemical Sample
+ * Received at Lab Test"), which would blow up this deliberately dense table.
+ * The full label stays available via the header's title attribute. */
+const HEADER_MAX = 16;
+function shortHeader(label: string): string {
+  return label.length > HEADER_MAX ? label.slice(0, HEADER_MAX - 1).trimEnd() + "…" : label;
+}
 
 const PAGE_SIZES = [25, 50, 100];
 
 interface EditingCell {
   tenderId: string;
-  column: "result" | MilestoneKey;
+  column: string; // "result", or a milestone key
 }
 
 function SortIndicator({ active, direction }: { active: boolean; direction: SortDirection }) {
@@ -47,17 +63,26 @@ function SortIndicator({ active, direction }: { active: boolean; direction: Sort
 export function TenderTableClient({
   tenders,
   options,
+  milestoneTypes,
   anchor,
   isAdmin,
 }: {
   tenders: Tender[];
   options: FilterOptions;
+  milestoneTypes: MilestoneType[];
   anchor: string;
   isAdmin: boolean;
 }) {
   const router = useRouter();
   const [filters, setFilters] = useState<TenderFilters>(DEFAULT_FILTERS);
-  const [visibleCols, setVisibleCols] = useState<VisibleColumns>(DEFAULT_VISIBLE_COLUMNS);
+  // Keyed by column key rather than a fixed union: milestone keys are data now,
+  // so an admin-added milestone needs a visibility slot without a code change.
+  // The starting state comes from `milestone_types.show_in_table`.
+  const [visibleCols, setVisibleCols] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = { ...FIELD_TOGGLE_DEFAULTS };
+    for (const m of milestoneTypes) initial[m.key] = m.showInTable;
+    return initial;
+  });
   const [showColMenu, setShowColMenu] = useState(false);
   const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection } | null>(null);
   const [page, setPage] = useState(1);
@@ -95,7 +120,7 @@ export function TenderTableClient({
     [sorted, safePage, pageSize]
   );
 
-  const visibleMilestones = MILESTONE_DEFS.filter((d) => !isMilestoneToggleable(d.key) || visibleCols[d.key]);
+  const visibleMilestones = milestoneTypes.filter((m) => visibleCols[m.key]);
 
   // ── Bulk selection ──────────────────────────────────────────────────────
   const pageIds = pageItems.map((t) => t.id);
@@ -183,7 +208,7 @@ export function TenderTableClient({
     });
   }
 
-  function handleQuickMilestone(tenderId: string, key: MilestoneKey, value: string) {
+  function handleQuickMilestone(tenderId: string, key: string, value: string) {
     setQuickEditError(null);
     startTransition(async () => {
       const result = await quickUpdateMilestone(tenderId, key, value);
@@ -191,11 +216,12 @@ export function TenderTableClient({
     });
   }
 
-  function sortableHeader(key: SortKey, label: string, align: "left" | "right" = "left") {
+  function sortableHeader(key: SortKey, label: string, align: "left" | "right" = "left", title?: string) {
     return (
       <th
         className={`${styles.th} ${align === "right" ? styles.thRight : ""} ${styles.thSortable}`}
         onClick={() => toggleSort(key)}
+        title={title}
       >
         {label}
         <SortIndicator active={sort?.key === key} direction={sort?.direction ?? "asc"} />
@@ -276,14 +302,24 @@ export function TenderTableClient({
             </button>
             {showColMenu && (
               <div className={styles.colMenu}>
-                {TOGGLEABLE_COLUMNS.map((c) => (
+                {FIELD_TOGGLES.map((c) => (
                   <label key={c.key} className={styles.colMenuItem}>
                     <input
                       type="checkbox"
-                      checked={visibleCols[c.key]}
+                      checked={!!visibleCols[c.key]}
                       onChange={() => setVisibleCols((v) => ({ ...v, [c.key]: !v[c.key] }))}
                     />
                     {c.label}
+                  </label>
+                ))}
+                {milestoneTypes.map((m) => (
+                  <label key={m.key} className={styles.colMenuItem}>
+                    <input
+                      type="checkbox"
+                      checked={!!visibleCols[m.key]}
+                      onChange={() => setVisibleCols((v) => ({ ...v, [m.key]: !v[m.key] }))}
+                    />
+                    {m.label}
                   </label>
                 ))}
               </div>
@@ -353,7 +389,7 @@ export function TenderTableClient({
                   {visibleCols.qty && sortableHeader("qty", "Qty", "right")}
                   {sortableHeader("nilaiPenawaran", "Bid Value", "right")}
                   {visibleCols.pnl && sortableHeader("pnl", "P&L")}
-                  {visibleMilestones.map((d) => sortableHeader(d.key, MILESTONE_TABLE_HEADERS[d.key]))}
+                  {visibleMilestones.map((m) => sortableHeader(m.key, shortHeader(m.label), "left", m.label))}
                   {sortableHeader("result", "Result")}
                 </tr>
               </thead>
@@ -392,20 +428,20 @@ export function TenderTableClient({
                     {visibleCols.qty && <td className={`${styles.td} ${styles.tdRight}`}>{t.qty ?? "—"}</td>}
                     <td className={`${styles.td} ${styles.tdRight}`}>{formatRupiah(t.nilaiPenawaran)}</td>
                     {visibleCols.pnl && <td className={styles.td}>{t.pnl ? "Yes" : "—"}</td>}
-                    {visibleMilestones.map((d) => {
-                      const iso = t.milestones[d.key];
+                    {visibleMilestones.map((m) => {
+                      const iso = t.milestones[m.key] ?? null;
                       const tone = dateTone(iso, t.result, anchor);
                       const isEditing =
-                        isAdmin && editingCell?.tenderId === t.id && editingCell.column === d.key;
+                        isAdmin && editingCell?.tenderId === t.id && editingCell.column === m.key;
                       if (isEditing) {
                         return (
-                          <td key={d.key} className={styles.dateCell} onClick={(e) => e.stopPropagation()}>
+                          <td key={m.key} className={styles.dateCell} onClick={(e) => e.stopPropagation()}>
                             <input
                               type="date"
                               autoFocus
                               defaultValue={iso ?? ""}
                               className={styles.inlineDateInput}
-                              onChange={(e) => handleQuickMilestone(t.id, d.key, e.target.value)}
+                              onChange={(e) => handleQuickMilestone(t.id, m.key, e.target.value)}
                               onBlur={() => setEditingCell(null)}
                             />
                           </td>
@@ -413,17 +449,17 @@ export function TenderTableClient({
                       }
                       return (
                         <td
-                          key={d.key}
+                          key={m.key}
                           className={`${styles.dateCell} ${DATE_TONE_CLASS[tone]} ${isAdmin ? styles.editableCell : ""}`}
                           onClick={
                             isAdmin
                               ? (e) => {
                                   e.stopPropagation();
-                                  setEditingCell({ tenderId: t.id, column: d.key });
+                                  setEditingCell({ tenderId: t.id, column: m.key });
                                 }
                               : undefined
                           }
-                          title={isAdmin ? "Click to edit" : undefined}
+                          title={isAdmin ? `Click to edit ${m.label}` : m.label}
                         >
                           {iso ? formatDateID(iso) : "—"}
                         </td>

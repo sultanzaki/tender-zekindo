@@ -34,6 +34,7 @@ function mapRow(row: TenderRow, names: Map<string, string>): Tender {
     oeCatatan: row.oe_catatan,
     idrPerL: toNumber(row.idr_per_l),
     milestones: row.milestones,
+    milestoneOrder: row.milestone_order,
     result: row.result,
     carryOver: row.carry_over,
     remarks: row.remarks,

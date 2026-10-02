@@ -15,6 +15,15 @@ export const MILESTONE_KEYS = [
 
 export type MilestoneKey = (typeof MILESTONE_KEYS)[number];
 
+/** The 12 milestones the app shipped with.
+ *
+ * NOTE: these are now only the *seed* for the `milestone_types` table (see
+ * supabase/migrations/0006_dynamic_milestones.sql) and a fallback for when the
+ * catalog can't be loaded. At runtime the app reads the catalog from the
+ * database, because an admin can add, rename, reorder and archive milestones —
+ * see src/lib/milestones.ts and resolveTenderMilestones() in tender-logic.ts.
+ * Do not reintroduce hardcoded milestone rendering: custom milestones are
+ * keyed by arbitrary strings, not by this union. */
 export const MILESTONE_DEFS: { key: MilestoneKey; label: string }[] = [
   { key: "regist", label: "Registration" },
   { key: "pq", label: "PQ" },
@@ -46,7 +55,7 @@ export const RESULT_ENUM = [
 
 export type ResultValue = (typeof RESULT_ENUM)[number];
 
-export type Milestones = Record<MilestoneKey, string | null>;
+export type Milestones = Record<string, string | null>;
 
 export type UserRole = "viewer" | "admin";
 
@@ -72,6 +81,10 @@ export interface Tender {
   oeCatatan: string | null;
   idrPerL: number | null;
   milestones: Milestones;
+  /** Per-tender milestone order and subset. `null` means "use the catalog's
+   * default order and show every milestone in it". See
+   * resolveTenderMilestones() in tender-logic.ts. */
+  milestoneOrder: string[] | null;
   result: string | null;
   carryOver: string | null;
   remarks: string | null;
@@ -85,6 +98,25 @@ export interface Tender {
   updatedBy: string | null;
   updatedByName: string | null;
   updatedAt: string;
+}
+
+/** A row of the global milestone catalog (`milestone_types`) — milestones are
+ * admin-manageable now. See src/lib/milestones.ts and migration
+ * 0006_dynamic_milestones.sql. */
+export interface MilestoneType {
+  id: string;
+  key: string;
+  label: string;
+  sortOrder: number;
+  /** Starting visibility in the dense tender table (togglable per session). */
+  showInTable: boolean;
+}
+
+/** A catalog row as shown on the admin page — includes archived milestones.
+ * Lives here rather than in the server-only milestones module so the client
+ * component can type its props without importing a `server-only` file. */
+export interface MilestoneTypeAdmin extends MilestoneType {
+  archivedAt: string | null;
 }
 
 export interface DocumentType {
@@ -121,58 +153,9 @@ export interface TenderEvent {
   createdAt: string;
 }
 
-/** Short header labels for the milestone columns on the dense tender table
- * (the long form is used in the detail timeline and the new-tender form). */
-export const MILESTONE_TABLE_HEADERS: Record<MilestoneKey, string> = {
-  regist: "Registration",
-  pq: "PQ",
-  technicalPq: "Technical PQ",
-  prebid: "Prebid",
-  secondPrebid: "2nd Prebid",
-  technicalBidding: "Tech. Bidding",
-  sampelLab: "Lab Sample",
-  pengirimanBukti: "Lab Payment Proof",
-  pemasukanDokumen: "Bid Docs",
-  fieldTest: "Field Test",
-  openBid: "Open Bid",
-  firstDelivery: "First Delivery",
-};
-
-/** Columns that can be shown/hidden via the "Columns" menu on the tender table. */
-export const TOGGLEABLE_COLUMNS: { key: "period" | "oe" | "qty" | "pnl" | MilestoneKey; label: string }[] = [
-  { key: "period", label: "Period" },
-  { key: "oe", label: "OE (Rp)" },
-  { key: "qty", label: "Qty" },
-  { key: "pnl", label: "P&L" },
-  { key: "technicalPq", label: "Technical PQ" },
-  { key: "secondPrebid", label: "Second Prebid" },
-  { key: "technicalBidding", label: "Technical Bidding" },
-  { key: "sampelLab", label: "Lab Sample" },
-  { key: "pengirimanBukti", label: "Lab Payment Proof" },
-  { key: "pemasukanDokumen", label: "Bid Documents" },
-  { key: "firstDelivery", label: "First Delivery" },
-];
-
-export type VisibleColumns = Record<(typeof TOGGLEABLE_COLUMNS)[number]["key"], boolean>;
-
-export const DEFAULT_VISIBLE_COLUMNS: VisibleColumns = {
-  period: false,
-  oe: false,
-  qty: false,
-  pnl: false,
-  regist: true,
-  pq: true,
-  technicalPq: false,
-  prebid: true,
-  secondPrebid: false,
-  technicalBidding: false,
-  sampelLab: false,
-  pengirimanBukti: false,
-  pemasukanDokumen: false,
-  fieldTest: true,
-  openBid: true,
-  firstDelivery: false,
-};
+// ── Column toggles on the tender table ──────────────────────────────────────
+// The milestone half of this list is now derived from `milestone_types` at
+// runtime (see TenderTableClient); only the plain field columns are fixed here.
 
 export interface TenderFilters {
   period: string;
@@ -203,7 +186,7 @@ export interface TenderFormValues {
   oe: string;
   oeCatatan: string;
   nilaiPenawaran: string;
-  milestones: Partial<Record<MilestoneKey, string>>;
+  milestones: Record<string, string>;
 }
 
 export interface TenderEditFormValues extends TenderFormValues {

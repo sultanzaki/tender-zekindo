@@ -161,6 +161,14 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
                   >
                     Manage users
                   </Link>
+                  <Link
+                    href="/admin/milestones"
+                    className={styles.menuItem}
+                    role="menuitem"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    Manage milestones
+                  </Link>
                 </>
               ) : (
                 <div className={styles.menuNote}>Read-only access — ask an admin for changes.</div>
