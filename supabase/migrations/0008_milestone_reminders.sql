@@ -25,6 +25,16 @@
 --
 -- Aman dijalankan berulang. Tidak ada DROP tabel dan tidak ada DELETE.
 
+-- Return type-nya berubah (due_soon+stalled menjadi due_h3+due_soon+stalled), dan
+-- CREATE OR REPLACE tidak bisa mengubah row type yang dibentuk OUT parameter.
+-- Tanpa DROP ini, Supabase menolak dengan:
+--   ERROR: 42P13: cannot change return type of existing function
+--   HINT: Use DROP FUNCTION notification_counts() first.
+-- Aman: tidak ada view/function lain yang memakai fungsi ini, dan langsung
+-- dibuat ulang di bawah. `if exists` supaya migrasi ini tetap bisa dijalankan
+-- dua kali.
+drop function if exists public.notification_counts();
+
 create or replace function public.notification_counts()
 returns table (due_h3 integer, due_soon integer, stalled integer)
 language sql
