@@ -2,6 +2,7 @@ import "server-only";
 import { unstable_cache } from "next/cache";
 import { supabaseServer } from "./supabase-server";
 import { MILESTONE_TYPES_TAG } from "./cache-tags";
+import { DEFAULT_MILESTONE_TYPES } from "./tender-logic";
 import type { MilestoneType, MilestoneTypeAdmin } from "./types";
 
 /**
@@ -24,13 +25,19 @@ export const getMilestoneTypes = unstable_cache(
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: true });
     if (error) {
-      // Deliberately not throwing: this runs in the root of most pages, and the
-      // `milestone_types` table only exists after migration 0006. Returning an
-      // empty catalog makes resolveTenderMilestones() fall back to the 12
-      // built-in milestones, so the app renders exactly as it did before the
-      // migration instead of 500-ing on every route.
-      console.error("Failed to load milestone types, falling back to built-ins:", error.message);
-      return [];
+      // Falls back to the 12 built-in milestones, NOT to an empty array.
+      //
+      // This is the fix for a real regression: the catalog is consumed directly
+      // by TenderTableClient, both tender forms and the Excel export — not only
+      // through resolveTenderMilestones(), which has its own fallback. Returning
+      // [] here therefore deleted every milestone column and every milestone
+      // date input from the UI, so before migration 0006 the app looked broken
+      // rather than merely missing the new feature.
+      //
+      // An empty-but-successful read still returns [] on purpose: that is an
+      // admin who archived every milestone, which is a legitimate choice.
+      console.error("Failed to load milestone types, falling back to the built-ins:", error.message);
+      return DEFAULT_MILESTONE_TYPES;
     }
     return (data ?? []).map((r) => ({
       id: r.id,

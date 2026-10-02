@@ -46,7 +46,13 @@ const BUTTON_PRIMARY: React.CSSProperties = {
 /** Global milestone catalog management: add, rename, reorder, archive.
  * The per-tender order lives in the tender edit form (it writes
  * `tenders.milestone_order`). */
-export function MilestoneAdmin({ milestoneTypes }: { milestoneTypes: MilestoneTypeAdmin[] }) {
+export function MilestoneAdmin({
+  milestoneTypes,
+  loadError = null,
+}: {
+  milestoneTypes: MilestoneTypeAdmin[];
+  loadError?: string | null;
+}) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -196,6 +202,25 @@ export function MilestoneAdmin({ milestoneTypes }: { milestoneTypes: MilestoneTy
             Add milestone
           </button>
         </div>
+
+        {loadError && (
+          <div
+            style={{
+              background: "#fef2f2",
+              border: "1px solid #fecaca",
+              borderRadius: 6,
+              padding: "10px 12px",
+              marginBottom: 12,
+              fontSize: 12.5,
+              color: "#991b1b",
+            }}
+          >
+            Could not load the milestone catalog: {loadError}
+            <br />
+            If the <code>milestone_types</code> table does not exist yet, run{" "}
+            <code>supabase/migrations/0006_dynamic_milestones.sql</code> in the Supabase SQL editor first.
+          </div>
+        )}
 
         {message && (
           <div style={{ color: "var(--zk-error, #b91c1c)", fontSize: 12.5, marginBottom: 10 }}>{message}</div>
