@@ -86,21 +86,35 @@ export const getAllTenders = cache(
     getTendersCached(Boolean(options?.includeArchived)),
 );
 
+export interface NotificationCounts {
+  /** Milestones due within 3 days — the reminder an admin acts on. */
+  dueH3: number;
+  /** Milestones due within 14 days, for planning ahead. */
+  dueSoon: number;
+  /** Active tenders with nothing scheduled ahead at all. */
+  stalled: number;
+}
+
 /**
- * The two numbers behind the nav bell. Counted in Postgres rather than by
- * pulling every tender across the wire — see
- * supabase/migrations/0005_notification_counts.sql for the equivalence with
- * computeDeadlines()/computeStalled().
+ * The numbers behind the nav bell, counted in Postgres rather than by pulling
+ * every tender across the wire — see
+ * supabase/migrations/0008_milestone_reminders.sql for the equivalence with
+ * computeDeadlines()/computeStalled(), including the per-tender
+ * `milestone_order` override.
  *
  * Deliberately NOT wrapped in unstable_cache: after this it is a single cheap
  * round trip, and skipping the cache keeps the badge exact rather than
  * up-to-30s stale.
  */
-export async function getNotificationCounts(): Promise<number> {
+export async function getNotificationCounts(): Promise<NotificationCounts> {
   const { data, error } = await supabaseServer().rpc("notification_counts");
   if (error) throw new Error(`Failed to load notification counts: ${error.message}`);
   const row = data?.[0];
-  return (row?.due_soon ?? 0) + (row?.stalled ?? 0);
+  return {
+    dueH3: row?.due_h3 ?? 0,
+    dueSoon: row?.due_soon ?? 0,
+    stalled: row?.stalled ?? 0,
+  };
 }
 
 export async function getArchivedTenders(): Promise<Tender[]> {

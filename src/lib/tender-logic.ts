@@ -154,12 +154,21 @@ export interface DeadlineRow {
   urgent: boolean;
 }
 
+/** The reminder window: a milestone this close is something to act on now
+ * rather than plan for. Also baked into notification_counts() in
+ * supabase/migrations/0008_milestone_reminders.sql — change both together. */
+export const REMINDER_DAYS = 3;
+
+/** The planning window, shown as "due soon". Same note as above: the SQL mirrors
+ * this value too. */
+export const DUE_SOON_DAYS = 14;
+
 export function computeDeadlines(tenders: Tender[], anchor: string, catalog?: MilestoneType[]): DeadlineRow[] {
   const rows: DeadlineRow[] = [];
   for (const t of tenders) {
     if (t.result) continue;
     const nm = nextMilestone(t, anchor, catalog);
-    if (nm && nm.diff <= 14) {
+    if (nm && nm.diff <= DUE_SOON_DAYS) {
       rows.push({
         tenderId: t.id,
         days: nm.diff,
@@ -168,7 +177,7 @@ export function computeDeadlines(tenders: Tender[], anchor: string, catalog?: Mi
         product: t.product || "—",
         milestoneLabel: nm.label,
         dateFormatted: formatDateID(nm.date) ?? "—",
-        urgent: nm.diff < 7,
+        urgent: nm.diff <= REMINDER_DAYS,
       });
     }
   }

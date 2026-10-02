@@ -217,10 +217,11 @@ export interface Database {
     Views: Record<string, never>;
     Functions: {
       /** Nav badge counts, computed in Postgres — see
-       * supabase/migrations/0005_notification_counts.sql. */
+       * supabase/migrations/0005_notification_counts.sql and
+       * 0008_milestone_reminders.sql (which added due_h3). */
       notification_counts: {
         Args: Record<string, never>;
-        Returns: { due_soon: number; stalled: number }[];
+        Returns: { due_h3: number; due_soon: number; stalled: number }[];
       };
     };
   };
