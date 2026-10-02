@@ -9,6 +9,9 @@ export interface Database {
         Row: {
           id: string;
           row_no: number;
+          /** upstream | downstream (migration 0009). Typed as string like the
+           * other enum-ish columns; src/lib/tenders.ts narrows it to Track. */
+          track: string;
           period: string;
           area: string;
           tender_no: string | null;
@@ -154,6 +157,7 @@ export interface Database {
         Row: {
           id: string;
           key: string;
+          track: string;
           label: string;
           sort_order: number;
           show_in_table: boolean;

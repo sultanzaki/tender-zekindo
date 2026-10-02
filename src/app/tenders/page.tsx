@@ -2,21 +2,37 @@ import { requireUser } from "@/lib/auth/dal";
 import { getAllTenders, getFilterOptions } from "@/lib/tenders";
 import { getMilestoneTypes } from "@/lib/milestones";
 import { todayISO } from "@/lib/tender-logic";
+import { flatParams, trackFromParam } from "@/lib/types";
 import { TenderTableClient } from "@/components/TenderTableClient";
+import { TrackSwitch } from "@/components/TrackSwitch";
 
 export const dynamic = "force-dynamic";
 
-export default async function TenderTablePage() {
+export default async function TenderTablePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const ctx = await requireUser();
-  const [tenders, milestoneTypes] = await Promise.all([getAllTenders(), getMilestoneTypes()]);
+  const sp = await searchParams;
+  const track = trackFromParam(sp.track);
+
+  const [tenders, milestoneTypes] = await Promise.all([
+    getAllTenders({ track }),
+    getMilestoneTypes(track),
+  ]);
   const options = getFilterOptions(tenders);
   return (
-    <TenderTableClient
-      tenders={tenders}
-      options={options}
-      milestoneTypes={milestoneTypes}
-      anchor={todayISO()}
-      isAdmin={ctx.profile.role === "admin"}
-    />
+    <>
+      <TrackSwitch current={track} basePath="/tenders" params={flatParams(sp)} />
+      <TenderTableClient
+        tenders={tenders}
+        options={options}
+        milestoneTypes={milestoneTypes}
+        anchor={todayISO()}
+        isAdmin={ctx.profile.role === "admin"}
+        track={track}
+      />
+    </>
   );
 }

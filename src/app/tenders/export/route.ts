@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth/dal";
 import { getAllTenders } from "@/lib/tenders";
 import { getMilestoneTypes } from "@/lib/milestones";
 import { filterTenders } from "@/lib/tender-logic";
+import { trackFromParam } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,7 @@ export async function GET(request: Request) {
   const isAdmin = ctx.profile.role === "admin";
 
   const { searchParams } = new URL(request.url);
+  const track = trackFromParam(searchParams.get("track"));
   const filters = {
     period: searchParams.get("period") ?? "all",
     area: searchParams.get("area") ?? "all",
@@ -25,8 +27,8 @@ export async function GET(request: Request) {
     search: searchParams.get("search") ?? "",
   };
 
-  const tenders = await getAllTenders();
-  const milestoneTypes = await getMilestoneTypes();
+  const tenders = await getAllTenders({ track });
+  const milestoneTypes = await getMilestoneTypes(track);
   const rows = filterTenders(tenders, filters);
 
   const workbook = new ExcelJS.Workbook();

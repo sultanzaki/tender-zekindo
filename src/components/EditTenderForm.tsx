@@ -44,6 +44,7 @@ function toFormValues(tender: Tender): TenderEditFormValues {
     remark: tender.remark || "",
     pnl: tender.pnl,
     catatanInternal: tender.catatanInternal || "",
+    track: tender.track,
   };
 }
 
@@ -99,7 +100,7 @@ export function EditTenderForm({
     setOrderMessage(null);
     setCreating(true);
     startTransition(async () => {
-      const result = await ensureMilestoneTypeByName(label);
+      const result = await ensureMilestoneTypeByName(label, tender.track);
       setCreating(false);
       const key = result.key;
       if (result.error || !key) {
@@ -109,7 +110,7 @@ export function EditTenderForm({
       setExtraTypes((types) =>
         types.some((t) => t.key === key)
           ? types
-          : [...types, { id: key, key, label, sortOrder: 0, showInTable: false }]
+          : [...types, { id: key, key, track: tender.track, label, sortOrder: 0, showInTable: false }]
       );
       setOrder((o) => (o.includes(key) ? o : [...o, key]));
       setNewMilestoneLabel("");

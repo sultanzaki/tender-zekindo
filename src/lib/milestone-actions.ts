@@ -5,6 +5,7 @@ import { requireAdmin } from "./auth/dal";
 import { supabaseServer } from "./supabase-server";
 import { MILESTONE_TYPES_TAG, TENDERS_TAG } from "./cache-tags";
 import { slugifyMilestoneKey } from "./milestones";
+import type { Track } from "./types";
 
 export interface MilestoneActionResult {
   error?: string;
@@ -19,17 +20,21 @@ const ORDER_STEP = 10;
  * A milestone with `tenders.milestone_order` = null (which is every existing
  * tender) picks this up automatically, because null means "show the whole
  * catalog in the default order". */
-export async function addMilestoneType(label: string): Promise<MilestoneActionResult> {
+export async function addMilestoneType(label: string, track: Track): Promise<MilestoneActionResult> {
   const ctx = await requireAdmin();
   const trimmed = label.trim();
   if (!trimmed) return { error: "Nama milestone tidak boleh kosong." };
 
-  const key = slugifyMilestoneKey(trimmed);
+  const key = slugifyMilestoneKey(trimmed, track);
   if (!key) return { error: "Nama milestone harus mengandung huruf atau angka." };
 
+  // Scoped to this track: the catalogs are independent, so a new upstream
+  // milestone must not be appended after the last downstream one (that would
+  // make it appear at the wrong place in the other track's default order).
   const { data: last } = await supabaseServer()
     .from("milestone_types")
     .select("sort_order")
+    .eq("track", track)
     .order("sort_order", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -37,7 +42,7 @@ export async function addMilestoneType(label: string): Promise<MilestoneActionRe
 
   const { error } = await supabaseServer()
     .from("milestone_types")
-    .insert({ key, label: trimmed, sort_order: sortOrder, created_by: ctx.userId });
+    .insert({ key, label: trimmed, sort_order: sortOrder, track, created_by: ctx.userId });
   if (error) {
     if (error.code === "23505") {
       return { error: `Milestone dengan key "${key}" sudah ada. Pakai nama lain.` };
@@ -59,12 +64,12 @@ export async function addMilestoneType(label: string): Promise<MilestoneActionRe
  * adalah key yang sudah ada, bukan error. Milestone yang terarsip juga dicocokkan
  * dan diaktifkan lagi, bukan dibikin duplikatnya.
  */
-export async function ensureMilestoneTypeByName(label: string): Promise<MilestoneActionResult> {
+export async function ensureMilestoneTypeByName(label: string, track: Track): Promise<MilestoneActionResult> {
   const ctx = await requireAdmin();
   const trimmed = label.trim();
   if (!trimmed) return { error: "Nama milestone tidak boleh kosong." };
 
-  const slug = slugifyMilestoneKey(trimmed);
+  const slug = slugifyMilestoneKey(trimmed, track);
   if (!slug) return { error: "Nama milestone harus mengandung huruf atau angka." };
 
   // Katalognya kecil, jadi dibaca sekalian: satu query untuk mencari nama yang
@@ -73,11 +78,17 @@ export async function ensureMilestoneTypeByName(label: string): Promise<Mileston
   // `%` atau `_` di nama milestone tidak diperlakukan sebagai wildcard.
   const { data, error: readError } = await supabaseServer()
     .from("milestone_types")
-    .select("key, label, archived_at");
+    .select("key, label, archived_at, track");
   if (readError) return { error: readError.message };
   const rows = data ?? [];
 
-  const match = rows.find((r) => r.label.trim().toLowerCase() === trimmed.toLowerCase());
+  // Pencocokan nama HARUS dalam jalur yang sama. Tanpa `track` di sini, menulis
+  // "Prebid" di form downstream akan menemukan milestone "Prebid" milik upstream
+  // dan memakai key upstream itu — sehingga tender downstream menyimpan tanggal
+  // di key milik jalur lain.
+  const match = rows.find(
+    (r) => r.track === track && r.label.trim().toLowerCase() === trimmed.toLowerCase(),
+  );
   if (match) {
     if (match.archived_at) {
       const { error } = await supabaseServer()
@@ -93,6 +104,10 @@ export async function ensureMilestoneTypeByName(label: string): Promise<Mileston
   // Nama yang berbeda bisa menghasilkan key yang sama ("Lab Test 2" dan
   // "Lab-Test2"). Key tidak boleh diubah setelah tertulis karena tanggal di
   // tenders.milestones memakai key itu, jadi yang baru dibuatkan key uniknya.
+  //
+  // Diperiksa terhadap SELURUH key, bukan hanya jalur ini: constraint di
+  // database adalah `key unique` global, dan key yang sama di dua jalur akan
+  // membuat satu jalur bisa menimpa arti tanggal jalur lain.
   const takenKeys = new Set(rows.map((r) => r.key));
   let key = slug;
   for (let n = 2; takenKeys.has(key); n++) key = `${slug}${n}`;
@@ -100,6 +115,7 @@ export async function ensureMilestoneTypeByName(label: string): Promise<Mileston
   const { data: last } = await supabaseServer()
     .from("milestone_types")
     .select("sort_order")
+    .eq("track", track)
     .order("sort_order", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -107,7 +123,7 @@ export async function ensureMilestoneTypeByName(label: string): Promise<Mileston
 
   const { error } = await supabaseServer()
     .from("milestone_types")
-    .insert({ key, label: trimmed, sort_order: sortOrder, created_by: ctx.userId });
+    .insert({ key, label: trimmed, sort_order: sortOrder, track, created_by: ctx.userId });
   if (error) return { error: error.message };
 
   updateTag(MILESTONE_TYPES_TAG);
@@ -162,15 +178,27 @@ export async function restoreMilestoneType(id: string): Promise<MilestoneActionR
   return {};
 }
 
-/** Moves a milestone one step up or down in the *default* order by swapping
- * sort_order with its neighbour. Tenders with their own `milestone_order` are
- * unaffected — this only changes the default. */
+/** Moves a milestone one step up or down in the *default* order of ITS OWN
+ * track, by swapping sort_order with its neighbour there. Tenders with their
+ * own `milestone_order` are unaffected — this only changes the default. */
 export async function moveMilestoneType(id: string, direction: "up" | "down"): Promise<MilestoneActionResult> {
   await requireAdmin();
+
+  // The track is read first so the neighbour is taken from the same catalog.
+  // Without this, pressing ↑ on the first upstream milestone could swap it with
+  // the last downstream one: the two orders would then be interleaved permanently.
+  const { data: subject, error: subjectError } = await supabaseServer()
+    .from("milestone_types")
+    .select("id, sort_order, track")
+    .eq("id", id)
+    .maybeSingle();
+  if (subjectError) return { error: subjectError.message };
+  if (!subject) return { error: "Milestone tidak ditemukan." };
 
   const { data, error } = await supabaseServer()
     .from("milestone_types")
     .select("id, sort_order")
+    .eq("track", subject.track)
     .is("archived_at", null)
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true });
@@ -233,9 +261,21 @@ export async function setTenderMilestoneOrder(
 ): Promise<MilestoneActionResult> {
   await requireAdmin();
 
+  // The keys are validated against the catalog of THIS tender's track: a
+  // downstream tender must not be able to store upstream keys (and vice versa),
+  // which is exactly what a mismatched payload would do.
+  const { data: tender, error: tenderError } = await supabaseServer()
+    .from("tenders")
+    .select("track")
+    .eq("id", tenderId)
+    .maybeSingle();
+  if (tenderError) return { error: tenderError.message };
+  if (!tender) return { error: "Tender tidak ditemukan." };
+
   const { data: catalog, error: catalogError } = await supabaseServer()
     .from("milestone_types")
-    .select("key");
+    .select("key")
+    .eq("track", tender.track);
   if (catalogError) return { error: catalogError.message };
 
   const known = new Set((catalog ?? []).map((m) => m.key));

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth/dal";
 import { getAllTenders } from "@/lib/tenders";
-import { getMilestoneTypes } from "@/lib/milestones";
+import { getMilestoneCatalog } from "@/lib/milestones";
 import { computeDeadlines, computeStalled, formatDateID, todayISO, REMINDER_DAYS } from "@/lib/tender-logic";
 import shared from "@/components/shared.module.css";
 import styles from "./notifications.module.css";
@@ -10,7 +10,10 @@ export const dynamic = "force-dynamic";
 
 export default async function NotificationsPage() {
   await requireUser();
-  const [tenders, catalog] = await Promise.all([getAllTenders(), getMilestoneTypes()]);
+  // Both tracks at once: this page lists every tender, and resolving a
+  // downstream tender against the upstream catalog would show it with no
+  // milestones — and therefore no reminder — without any error at all.
+  const [tenders, catalog] = await Promise.all([getAllTenders(), getMilestoneCatalog()]);
   const anchor = todayISO();
 
   const deadlines = computeDeadlines(tenders, anchor, catalog);
