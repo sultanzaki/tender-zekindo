@@ -28,7 +28,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   let notificationCount = 0;
   if (ctx) {
     try {
-      notificationCount = await getNotificationCounts();
+      // The badge counts what needs acting on: milestones inside the 3-day
+      // reminder window, plus tenders with nothing scheduled ahead. The wider
+      // 14-day list stays on /notifications for planning.
+      const counts = await getNotificationCounts();
+      notificationCount = counts.dueH3 + counts.stalled;
     } catch {
       notificationCount = 0;
     }
