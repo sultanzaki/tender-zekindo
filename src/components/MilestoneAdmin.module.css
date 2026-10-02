@@ -1,0 +1,189 @@
+/* Manage milestones. Written as a CSS module rather than inline styles because
+ * this screen needs media queries: a milestone row carries an input, a key and
+ * five buttons, which cannot fit a phone width in one line. */
+
+.page {
+  padding: 28px 32px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+@media (max-width: 900px) {
+  .page {
+    padding: 20px 24px;
+  }
+}
+
+@media (max-width: 600px) {
+  .page {
+    padding: 16px;
+  }
+}
+
+/* The card body. Without this the content sits flush against the card border
+ * while the header title is inset by 20px, so the two columns of text do not
+ * line up. The padding is NOT reduced on small screens on purpose: it has to
+ * match .cardHeader exactly at every width, or the title and the inputs below
+ * it drift out of alignment again (which is the bug this class exists to fix). */
+.body {
+  padding: 16px 20px;
+}
+
+.addRow {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+@media (max-width: 560px) {
+  .addRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--zk-gray-200, #e5e7eb);
+}
+
+.index {
+  flex: none;
+  width: 26px;
+  font-size: 12px;
+  color: var(--color-fg3);
+}
+
+.name {
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--zk-gray-300, #d1d5db);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.key {
+  flex: none;
+  min-width: 96px;
+  font-size: 11px;
+  color: var(--color-fg3);
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.inTable {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.button {
+  padding: 6px 10px;
+  border: 1px solid var(--zk-gray-300, #d1d5db);
+  border-radius: 6px;
+  background: #fff;
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.buttonPrimary {
+  composes: button;
+  background: var(--color-primary, #111827);
+  border-color: var(--color-primary, #111827);
+  color: #fff;
+}
+
+/* Phone layout: the row becomes two lines — name on the first, key and the
+ * controls on the second — instead of pushing buttons off the screen. */
+@media (max-width: 820px) {
+  .row {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .name {
+    flex-basis: calc(100% - 34px); /* 26px index + 8px gap */
+  }
+
+  .key {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}
+
+/* Touch targets: 6px padding is fine for a mouse, cramped for a thumb. */
+@media (max-width: 600px) {
+  .button {
+    padding: 9px 12px;
+    font-size: 13px;
+  }
+}
+
+.input {
+  padding: 7px 10px;
+  border: 1px solid var(--zk-gray-300, #d1d5db);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  min-width: 0;
+}
+
+@media (max-width: 560px) {
+  .input {
+    padding: 10px 12px;
+    font-size: 14px; /* stops iOS Safari zooming in on focus */
+  }
+}
+
+.note {
+  margin-bottom: 6px;
+  font-size: 12.5px;
+  color: var(--color-fg3);
+}
+
+.archivedTitle {
+  margin: 26px 0 4px;
+  font-size: 13.5px;
+}
+
+.archivedNote {
+  margin-bottom: 8px;
+  font-size: 12.5px;
+  color: var(--color-fg3);
+}
+
+.errorBanner {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fef2f2;
+  font-size: 12.5px;
+  color: #991b1b;
+}
+
+.message {
+  margin-bottom: 10px;
+  font-size: 12.5px;
+  color: var(--zk-error, #b91c1c);
+}
