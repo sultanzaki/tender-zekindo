@@ -1,9 +1,10 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { requireAdmin } from "./auth/dal";
 import { supabaseServer } from "./supabase-server";
 import { DOCUMENT_BUCKET } from "./documents";
+import { DOCUMENT_TYPES_TAG } from "./cache-tags";
 import type { ActionError } from "./actions";
 
 export async function addDocumentType(
@@ -25,6 +26,10 @@ export async function addDocumentType(
   }
 
   if (currentTenderId) revalidatePath(`/tenders/${currentTenderId}`);
+  // A new checklist definition must show up on every tender page. updateTag
+  // (not revalidateTag) so the very next render waits for fresh data instead of
+  // serving the previous, stale list.
+  updateTag(DOCUMENT_TYPES_TAG);
   return { id: data.id, label: data.label };
 }
 

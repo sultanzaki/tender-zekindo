@@ -3,8 +3,7 @@ import { Poppins } from "next/font/google";
 import "./globals.css";
 import { TopNav } from "@/components/TopNav";
 import { getAuthContext } from "@/lib/auth/dal";
-import { getAllTenders } from "@/lib/tenders";
-import { computeDeadlines, computeStalled, todayISO } from "@/lib/tender-logic";
+import { getNotificationCounts } from "@/lib/tenders";
 
 const poppins = Poppins({
   variable: "--font-poppins",
@@ -29,9 +28,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   let notificationCount = 0;
   if (ctx) {
     try {
-      const tenders = await getAllTenders();
-      const anchor = todayISO();
-      notificationCount = computeDeadlines(tenders, anchor).length + computeStalled(tenders, anchor).length;
+      notificationCount = await getNotificationCounts();
     } catch {
       notificationCount = 0;
     }
