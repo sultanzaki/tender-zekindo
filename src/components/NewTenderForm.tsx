@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { createTender } from "@/lib/actions";
 import { findDuplicateTenderNo, findOutOfOrderMilestones } from "@/lib/tender-logic";
 import { type MilestoneType, type SelectOptionsMap, type TenderFormValues } from "@/lib/types";
@@ -38,6 +38,45 @@ export function NewTenderForm({
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  // Milestone order/subset for the tender being created. Starts as the catalog
+  // order; anything the user changes here is saved into tenders.milestone_order
+  // on submit, so the choice is made before the tender exists rather than only
+  // afterwards in the edit form.
+  const [order, setOrder] = useState<string[]>(() => milestoneTypes.map((m) => m.key));
+  const addSelectRef = useRef<HTMLSelectElement>(null);
+
+  const catalogByKey = useMemo(() => new Map(milestoneTypes.map((m) => [m.key, m])), [milestoneTypes]);
+  const orderedDefs = useMemo(
+    () => order.map((k) => catalogByKey.get(k)).filter((m): m is MilestoneType => !!m),
+    [order, catalogByKey]
+  );
+  const hiddenDefs = useMemo(
+    () => milestoneTypes.filter((m) => !order.includes(m.key)),
+    [milestoneTypes, order]
+  );
+
+  // ── Milestone order ─────────────────────────────────────────────────────
+  function moveInOrder(index: number, delta: -1 | 1) {
+    const target = index + delta;
+    if (target < 0 || target >= order.length) return;
+    setOrder((o) => {
+      const next = [...o];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+
+  function removeFromOrder(key: string) {
+    setOrder((o) => o.filter((k) => k !== key));
+  }
+
+  function addFromSelect() {
+    const key = addSelectRef.current?.value;
+    if (!key) return;
+    setOrder((o) => (o.includes(key) ? o : [...o, key]));
+    if (addSelectRef.current) addSelectRef.current.value = "";
+  }
+
   function field<K extends keyof TenderFormValues>(key: K) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
       setFormData((f) => ({ ...f, [key]: e.target.value }));
@@ -59,7 +98,7 @@ export function NewTenderForm({
   function handleSubmit() {
     setError(null);
     startTransition(async () => {
-      const result = await createTender(formData);
+      const result = await createTender({ ...formData, milestoneOrder: order });
       if (result?.error) setError(result.error);
     });
   }
@@ -188,6 +227,67 @@ export function NewTenderForm({
 
         {step === 3 && (
           <div>
+            {/* Milestone order & selection for the tender being created. Saved
+                into tenders.milestone_order when the tender is created; the date
+                inputs below follow the order. */}
+            <div className={styles.hint} style={{ marginBottom: 10 }}>
+              Milestones for this tender. Use ↑ ↓ to reorder, Remove to leave one out — you can add it back from the
+              dropdown. Removing only hides it for this tender; nothing is deleted from the catalog.
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+              {orderedDefs.map((m, i) => (
+                <div key={m.key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ flex: 1, fontSize: 13 }}>
+                    {i + 1}. {m.label}
+                  </span>
+                  <button
+                    type="button"
+                    className={styles.backButton}
+                    onClick={() => moveInOrder(i, -1)}
+                    disabled={i === 0 || isPending}
+                    title="Move up"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.backButton}
+                    onClick={() => moveInOrder(i, 1)}
+                    disabled={i === orderedDefs.length - 1 || isPending}
+                    title="Move down"
+                  >
+                    ↓
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.backButton}
+                    onClick={() => removeFromOrder(m.key)}
+                    disabled={isPending}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {hiddenDefs.length > 0 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+                <select ref={addSelectRef} className={styles.input} defaultValue="">
+                  <option value="" disabled>
+                    Add a milestone…
+                  </option>
+                  {hiddenDefs.map((m) => (
+                    <option key={m.key} value={m.key}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+                <button type="button" className={styles.backButton} onClick={addFromSelect} disabled={isPending}>
+                  Add
+                </button>
+              </div>
+            )}
+
             <div className={styles.hint}>Dates can be left blank if not yet known.</div>
             {milestoneOrderIssues.length > 0 && (
               <div className={styles.orderWarning}>
@@ -200,7 +300,7 @@ export function NewTenderForm({
               </div>
             )}
             <div className={styles.milestoneGrid}>
-              {milestoneTypes.map((m) => (
+              {orderedDefs.map((m) => (
                 <label key={m.key} className={styles.label}>
                   {m.label}
                   <input
