@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { quickUpdateMilestone, quickUpdateResult } from "@/lib/actions";
+import { bulkArchiveTenders, bulkDeleteTenders, quickUpdateMilestone, quickUpdateResult } from "@/lib/actions";
 import {
   DEFAULT_FILTERS,
   DEFAULT_VISIBLE_COLUMNS,
@@ -66,6 +66,9 @@ export function TenderTableClient({
   const [quickEditError, setQuickEditError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const menuRef = useRef<HTMLDivElement>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkMessage, setBulkMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!showColMenu) return;
@@ -93,6 +96,63 @@ export function TenderTableClient({
   );
 
   const visibleMilestones = MILESTONE_DEFS.filter((d) => !isMilestoneToggleable(d.key) || visibleCols[d.key]);
+
+  // ── Bulk selection ──────────────────────────────────────────────────────
+  const pageIds = pageItems.map((t) => t.id);
+  const allOnPageSelected = pageIds.length > 0 && pageIds.every((id) => selected.has(id));
+
+  function toggleRow(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllOnPage() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allOnPageSelected) pageIds.forEach((id) => next.delete(id));
+      else pageIds.forEach((id) => next.add(id));
+      return next;
+    });
+  }
+
+  async function runBulk(action: "archive" | "delete") {
+    const ids = [...selected];
+    if (!ids.length) return;
+
+    if (action === "archive") {
+      if (
+        !confirm(
+          `Archive ${ids.length} tender${ids.length === 1 ? "" : "s"}?\n\nThey'll disappear from the dashboard and table, and can be restored from /tenders/archive.`
+        )
+      ) {
+        return;
+      }
+    } else {
+      const typed = prompt(
+        `Permanently delete ${ids.length} tender${ids.length === 1 ? "" : "s"}?\n\nThis removes the rows AND their uploaded documents. It cannot be undone.\n\nType DELETE to confirm:`
+      );
+      if (typed !== "DELETE") return;
+    }
+
+    setBulkBusy(true);
+    setBulkMessage(null);
+    try {
+      const result = action === "archive" ? await bulkArchiveTenders(ids) : await bulkDeleteTenders(ids);
+      if (result.error) {
+        setBulkMessage(result.error);
+        return;
+      }
+      setSelected(new Set());
+      setBulkMessage(`${result.count} tender${result.count === 1 ? "" : "s"} ${action === "archive" ? "archived" : "deleted"}.`);
+      router.refresh();
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
   const exportHref = useMemo(() => {
     const params = new URLSearchParams();
@@ -245,6 +305,24 @@ export function TenderTableClient({
           </span>
         </div>
 
+        {isAdmin && selected.size > 0 && (
+          <div className={styles.bulkBar}>
+            <span className={styles.bulkCount}>{selected.size} selected</span>
+            <button className={styles.bulkGhost} onClick={() => setSelected(new Set())} disabled={bulkBusy}>
+              Clear
+            </button>
+            <span className={styles.bulkSpacer} />
+            <button className={styles.bulkButton} onClick={() => runBulk("archive")} disabled={bulkBusy}>
+              Archive selected
+            </button>
+            <button className={styles.bulkDanger} onClick={() => runBulk("delete")} disabled={bulkBusy}>
+              Delete permanently
+            </button>
+          </div>
+        )}
+
+        {bulkMessage && <div className={styles.bulkMessage}>{bulkMessage}</div>}
+
         {quickEditError && <div className={styles.quickEditError}>{quickEditError}</div>}
 
         {pageItems.length > 0 ? (
@@ -252,6 +330,18 @@ export function TenderTableClient({
             <table className={styles.table}>
               <thead>
                 <tr className={styles.theadRow}>
+                  {isAdmin && (
+                    <th className={`${styles.th} ${styles.checkboxCol}`}>
+                      <input
+                        type="checkbox"
+                        className={styles.checkbox}
+                        checked={allOnPageSelected}
+                        onChange={toggleAllOnPage}
+                        title="Select every row on this page"
+                        aria-label="Select every row on this page"
+                      />
+                    </th>
+                  )}
                   {sortableHeader("rowNo", "No")}
                   {sortableHeader("area", "Area")}
                   {sortableHeader("tenderNo", "Tender No.")}
@@ -269,7 +359,22 @@ export function TenderTableClient({
               </thead>
               <tbody>
                 {pageItems.map((t) => (
-                  <tr key={t.id} className={styles.bodyRow} onClick={() => router.push(`/tenders/${t.id}`)}>
+                  <tr
+                    key={t.id}
+                    className={`${styles.bodyRow} ${selected.has(t.id) ? styles.rowSelected : ""}`}
+                    onClick={() => router.push(`/tenders/${t.id}`)}
+                  >
+                    {isAdmin && (
+                      <td className={`${styles.td} ${styles.checkboxCol}`} onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          className={styles.checkbox}
+                          checked={selected.has(t.id)}
+                          onChange={() => toggleRow(t.id)}
+                          aria-label={`Select tender ${t.tenderNo || t.id}`}
+                        />
+                      </td>
+                    )}
                     <td className={`${styles.td} ${styles.tdMuted}`}>{t.rowNo}</td>
                     <td className={styles.td}>{t.area}</td>
                     <td className={`${styles.td} ${styles.tdNoWrap}`} style={{ color: "var(--color-fg2)" }}>

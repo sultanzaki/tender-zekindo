@@ -3,40 +3,81 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { logout } from "@/lib/auth/actions";
 import type { Profile } from "@/lib/types";
 import styles from "./TopNav.module.css";
 
+const NAV_ITEMS = [
+  { href: "/", label: "Dashboard" },
+  { href: "/tenders", label: "Tenders" },
+  { href: "/analytics", label: "Analytics" },
+] as const;
+
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
 export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | null; notificationCount?: number }) {
   const pathname = usePathname();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onPointerDown(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuOpen]);
+
+  // Navigating away should never leave the menu hanging open. Handled on the
+  // links' own onClick rather than an effect on `pathname`: calling setState
+  // synchronously in an effect body causes a cascading render (react-hooks/
+  // set-state-in-effect), and closing on click is the actual user intent.
 
   if (pathname === "/login") return null;
   if (!profile) return null;
 
-  const onTableSide = pathname.startsWith("/tenders");
-  const onDashboard = pathname === "/";
-  const onAnalytics = pathname.startsWith("/analytics");
   const isAdmin = profile.role === "admin";
 
   return (
-    <div className={styles.bar}>
+    <header className={styles.bar}>
       <div className={styles.left}>
-        <div className={styles.brand}>
+        <Link href="/" className={styles.brand}>
           <Image src="/logo.png" alt="Zekindo" height={24} width={100} style={{ height: 24, width: "auto" }} priority />
           <span className={styles.brandTitle}>Tender Management</span>
-        </div>
-        <div className={styles.tabs}>
-          <Link href="/" className={`${styles.tab} ${onDashboard ? styles.tabActive : ""}`}>
-            Dashboard
-          </Link>
-          <Link href="/tenders" className={`${styles.tab} ${onTableSide ? styles.tabActive : ""}`}>
-            Tenders
-          </Link>
-          <Link href="/analytics" className={`${styles.tab} ${onAnalytics ? styles.tabActive : ""}`}>
-            Analytics
-          </Link>
-        </div>
+        </Link>
+        <nav className={styles.tabs} aria-label="Main">
+          {NAV_ITEMS.map((item) => {
+            const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`${styles.tab} ${active ? styles.tabActive : ""}`}
+                aria-current={active ? "page" : undefined}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
       </div>
+
       <div className={styles.right}>
         {isAdmin && (
           <Link href="/tenders/new" className={styles.newButton}>
@@ -44,8 +85,18 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
             <span className={styles.newButtonShort}>+ New</span>
           </Link>
         )}
-        <Link href="/notifications" className={styles.bellLink} aria-label="Notifications">
-          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+
+        <Link href="/notifications" className={styles.iconButton} aria-label="Notifications">
+          <svg
+            width="19"
+            height="19"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
             <path d="M13.73 21a2 2 0 0 1-3.46 0" />
           </svg>
@@ -53,21 +104,78 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
             <span className={styles.bellBadge}>{notificationCount > 9 ? "9+" : notificationCount}</span>
           )}
         </Link>
-        <div className={styles.userMenu}>
-          <span className={styles.userName}>{profile.name}</span>
-          <span className={styles.roleBadge}>{profile.role}</span>
-          {isAdmin && (
-            <Link href="/admin/users" className={styles.userMenuLink}>
-              Users
-            </Link>
+
+        <div className={styles.userWrap} ref={menuRef}>
+          <button
+            type="button"
+            className={`${styles.userButton} ${menuOpen ? styles.userButtonOpen : ""}`}
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+          >
+            <span className={styles.avatar}>{initials(profile.name) || "?"}</span>
+            <span className={styles.userMeta}>
+              <span className={styles.userName}>{profile.name}</span>
+              <span className={styles.userRole}>{profile.role}</span>
+            </span>
+            <svg
+              className={styles.chevron}
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+
+          {menuOpen && (
+            <div className={styles.menu} role="menu">
+              <div className={styles.menuHeader}>
+                <div className={styles.menuAvatar}>{initials(profile.name) || "?"}</div>
+                <div style={{ minWidth: 0 }}>
+                  <div className={styles.menuName}>{profile.name}</div>
+                  <div className={styles.menuEmail}>{profile.email}</div>
+                </div>
+              </div>
+
+              {isAdmin ? (
+                <>
+                  <Link
+                    href="/tenders/archive"
+                    className={styles.menuItem}
+                    role="menuitem"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    Archived tenders
+                  </Link>
+                  <Link
+                    href="/admin/users"
+                    className={styles.menuItem}
+                    role="menuitem"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    Manage users
+                  </Link>
+                </>
+              ) : (
+                <div className={styles.menuNote}>Read-only access — ask an admin for changes.</div>
+              )}
+
+              <div className={styles.menuDivider} />
+              <form action={logout} onSubmit={() => setMenuOpen(false)}>
+                <button type="submit" className={styles.menuItemDanger} role="menuitem">
+                  Sign out
+                </button>
+              </form>
+            </div>
           )}
-          <form action={logout}>
-            <button type="submit" className={styles.userMenuLink}>
-              Sign out
-            </button>
-          </form>
         </div>
       </div>
-    </div>
+    </header>
   );
 }

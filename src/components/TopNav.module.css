@@ -19,41 +19,17 @@
   min-width: 0;
 }
 
-@media (max-width: 640px) {
-  .bar {
-    flex-wrap: wrap;
-    height: auto;
-    padding: 10px 14px;
-    row-gap: 10px;
-  }
-  .left {
-    gap: 14px;
-    width: 100%;
-    order: 1;
-  }
-  .right {
-    width: 100%;
-    order: 2;
-    justify-content: space-between;
-  }
-  .tabs {
-    flex: 1;
-    min-width: 0;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .tabs::-webkit-scrollbar {
-    display: none;
-  }
-  .tab {
-    flex-shrink: 0;
-  }
-}
+/* ── Brand ────────────────────────────────────────────────────────────── */
 
 .brand {
   display: flex;
   align-items: center;
   gap: 10px;
+  /* The global `a:hover` rule underlines every link; nav chrome must not. */
+  text-decoration: none;
+}
+.brand:hover {
+  text-decoration: none;
 }
 
 .brandTitle {
@@ -65,108 +41,103 @@
   white-space: nowrap;
 }
 
-@media (max-width: 480px) {
-  .brandTitle {
-    display: none;
-  }
-}
+/* ── Tabs ─────────────────────────────────────────────────────────────── */
 
 .tabs {
   display: flex;
-  gap: 4px;
+  gap: 2px;
+  align-self: stretch;
+  align-items: center;
 }
 
 .tab {
-  background: none;
+  position: relative;
   color: var(--color-fg2);
-  border: none;
-  padding: 8px 16px;
+  padding: 8px 14px;
   border-radius: var(--radius-md);
   font-weight: 500;
   font-size: 13px;
-  cursor: pointer;
-  transition: color 0.2s ease;
   white-space: nowrap;
+  text-decoration: none;
+  transition: color 0.15s ease, background 0.15s ease;
 }
-
-@media (max-width: 640px) {
-  .tab {
-    padding: 8px 10px;
-    font-size: 12.5px;
-  }
-}
-
 .tab:hover {
   color: var(--color-primary-dark);
+  background: var(--zk-gray-100);
+  text-decoration: none;
 }
 
-.tabActive {
-  background: var(--zk-blue-50);
-  color: var(--color-primary);
-}
+.tabActive,
 .tabActive:hover {
-  color: var(--color-primary);
+  color: var(--color-primary-dark);
+  background: var(--zk-blue-50);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+/* Underline bar makes the active tab unmistakable next to the tinted pill. */
+.tabActive::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: -11px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--color-primary);
+}
+
+/* ── Right cluster ────────────────────────────────────────────────────── */
+
+.right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .newButton {
   background: var(--color-primary);
   color: #fff;
-  border: none;
   padding: 9px 16px;
   border-radius: var(--radius-full);
   font-weight: 500;
   font-size: 13px;
-  cursor: pointer;
-  transition: background 0.2s ease;
   white-space: nowrap;
   flex-shrink: 0;
+  text-decoration: none;
+  transition: background 0.2s ease;
+}
+.newButton:hover {
+  background: var(--color-primary-dark);
+  color: #fff;
+  text-decoration: none;
+}
+.newButton:active {
+  transform: scale(0.97);
 }
 
 .newButtonShort {
   display: none;
 }
 
-@media (max-width: 400px) {
-  .newButton {
-    padding: 8px 12px;
-    font-size: 12px;
-  }
-  .newButtonFull {
-    display: none;
-  }
-  .newButtonShort {
-    display: inline;
-  }
-}
-.newButton:hover {
-  background: var(--color-primary-dark);
-}
-.newButton:active {
-  transform: scale(0.97);
-}
-
-.right {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-shrink: 0;
-}
-
-.bellLink {
+.iconButton {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border-radius: var(--radius-full);
   color: var(--color-fg2);
   flex-shrink: 0;
+  text-decoration: none;
   transition: background 0.15s ease, color 0.15s ease;
 }
-.bellLink:hover {
+.iconButton:hover {
   background: var(--zk-blue-50);
   color: var(--color-primary);
+  text-decoration: none;
 }
 
 .bellBadge {
@@ -185,48 +156,235 @@
   text-align: center;
 }
 
-.userMenu {
+/* ── User menu ────────────────────────────────────────────────────────── */
+
+.userWrap {
+  position: relative;
+}
+
+.userButton {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding-left: 14px;
-  border-left: 1px solid var(--color-border);
+  gap: 9px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  padding: 4px 10px 4px 4px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.userButton:hover {
+  background: var(--zk-gray-100);
+}
+.userButtonOpen {
+  background: var(--zk-blue-50);
+  border-color: var(--zk-blue-100);
+}
+
+.avatar {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.userMeta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.25;
+  min-width: 0;
 }
 
 .userName {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 12.5px;
+  font-weight: 600;
   color: var(--color-fg1);
   white-space: nowrap;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-@media (max-width: 720px) {
-  .userName {
+.userRole {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-fg3);
+}
+
+.chevron {
+  color: var(--color-fg3);
+  flex-shrink: 0;
+}
+
+.menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  min-width: 248px;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 6px;
+  z-index: 40;
+}
+
+.menuHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 12px;
+}
+
+.menuAvatar {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background: var(--zk-blue-50);
+  color: var(--color-primary-dark);
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.menuName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-fg1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.menuEmail {
+  font-size: 11.5px;
+  color: var(--color-fg3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.menuItem {
+  display: block;
+  padding: 9px 10px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--color-fg1);
+  text-decoration: none;
+  transition: background 0.12s ease;
+}
+.menuItem:hover {
+  background: var(--zk-blue-50);
+  color: var(--color-primary-dark);
+  text-decoration: none;
+}
+
+.menuItemDanger {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 9px 10px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-family: var(--font-sans);
+  color: var(--zk-error);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.menuItemDanger:hover {
+  background: var(--zk-error-light);
+}
+
+.menuNote {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--color-fg3);
+  line-height: 1.4;
+}
+
+.menuDivider {
+  height: 1px;
+  background: var(--color-divider);
+  margin: 6px 4px;
+}
+
+/* ── Responsive ───────────────────────────────────────────────────────── */
+
+@media (max-width: 860px) {
+  .userMeta {
     display: none;
+  }
+  .userButton {
+    padding: 4px;
   }
 }
 
-.roleBadge {
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  color: var(--color-primary);
-  background: var(--zk-blue-50);
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
+@media (max-width: 640px) {
+  .bar {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 10px 14px;
+    row-gap: 10px;
+  }
+  .left {
+    gap: 14px;
+    width: 100%;
+    order: 1;
+  }
+  .right {
+    width: 100%;
+    order: 2;
+    justify-content: flex-end;
+  }
+  .tabs {
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .tab {
+    flex-shrink: 0;
+    padding: 8px 10px;
+    font-size: 12.5px;
+  }
+  .tabActive::after {
+    left: 10px;
+    right: 10px;
+    bottom: -11px;
+  }
 }
 
-.userMenuLink {
-  background: none;
-  border: none;
-  color: var(--color-fg3);
-  font-size: 12.5px;
-  cursor: pointer;
-  padding: 0;
-  font-family: var(--font-sans);
-}
-.userMenuLink:hover {
-  color: var(--color-primary-dark);
-  text-decoration: underline;
+@media (max-width: 400px) {
+  .brandTitle {
+    display: none;
+  }
+  .newButton {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  .newButtonFull {
+    display: none;
+  }
+  .newButtonShort {
+    display: inline;
+  }
 }

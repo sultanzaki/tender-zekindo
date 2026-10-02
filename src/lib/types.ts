@@ -221,3 +221,16 @@ export interface FilterOptions {
   customers: string[];
   entitasList: string[];
 }
+
+/** Fields whose dropdown options are admin-extendable at runtime, backed by
+ * the `select_options` table (see addSelectOption in src/lib/actions.ts).
+ * Kept as an explicit allowlist: the Server Action used to accept any field
+ * string, so a caller could write arbitrary rows. */
+export const EXTENDABLE_FIELDS = ["area", "customer", "entitas"] as const;
+
+export type ExtendableField = (typeof EXTENDABLE_FIELDS)[number];
+
+/** Dropdown options per extendable field: everything already present on a
+ * tender row, merged with anything an admin has added via select_options
+ * (so a freshly added value is pickable before any tender uses it). */
+export type SelectOptionsMap = Record<ExtendableField, string[]>;
