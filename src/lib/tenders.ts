@@ -1,10 +1,12 @@
 import "server-only";
 import { cache } from "react";
+import { unstable_cache } from "next/cache";
 import { supabaseServer } from "./supabase-server";
 import type { TenderRow } from "./database.types";
 import type { FilterOptions, SelectOptionsMap, Tender } from "./types";
 import { distinctSorted, periodsSorted } from "./tender-logic";
 import { getProfilesByIds } from "./users";
+import { TENDERS_TAG } from "./cache-tags";
 
 // PostgREST (Supabase's REST layer) serializes `numeric` columns as JSON
 // strings, not numbers, to avoid precision loss — so despite the DB column
@@ -56,13 +58,49 @@ async function withNames(rows: TenderRow[]): Promise<Tender[]> {
   return rows.map((r) => mapRow(r, names));
 }
 
-export const getAllTenders = cache(async (options?: { includeArchived?: boolean }): Promise<Tender[]> => {
-  let query = supabaseServer().from("tenders").select("*").order("row_no", { ascending: true });
-  if (!options?.includeArchived) query = query.is("archived_at", null);
-  const { data, error } = await query;
-  if (error) throw new Error(`Failed to load tenders: ${error.message}`);
-  return withNames(data ?? []);
-});
+// The full tender list is read by the dashboard, /tenders, /analytics and the
+// nav badge path. It was re-fetched from Supabase (two cross-continent round
+// trips: the rows, then the profile names) on every one of those renders.
+//
+// `unstable_cache` keeps the result across requests and is invalidated by
+// `revalidateTag(TENDERS_TAG)` from every mutation in actions.ts /
+// document-actions.ts, so the app is never more than one write behind. The 30s
+// `revalidate` is a backstop for any write that bypasses those Server Actions
+// (e.g. SQL pasted straight into the Supabase editor).
+const getTendersCached = unstable_cache(
+  async (includeArchived: boolean): Promise<Tender[]> => {
+    let query = supabaseServer().from("tenders").select("*").order("row_no", { ascending: true });
+    if (!includeArchived) query = query.is("archived_at", null);
+    const { data, error } = await query;
+    if (error) throw new Error(`Failed to load tenders: ${error.message}`);
+    return withNames(data ?? []);
+  },
+  ["tenders:list"],
+  { tags: [TENDERS_TAG], revalidate: 30 },
+);
+
+// `cache()` on top so several components in one render share a single lookup.
+export const getAllTenders = cache(
+  async (options?: { includeArchived?: boolean }): Promise<Tender[]> =>
+    getTendersCached(Boolean(options?.includeArchived)),
+);
+
+/**
+ * The two numbers behind the nav bell. Counted in Postgres rather than by
+ * pulling every tender across the wire — see
+ * supabase/migrations/0005_notification_counts.sql for the equivalence with
+ * computeDeadlines()/computeStalled().
+ *
+ * Deliberately NOT wrapped in unstable_cache: after this it is a single cheap
+ * round trip, and skipping the cache keeps the badge exact rather than
+ * up-to-30s stale.
+ */
+export async function getNotificationCounts(): Promise<number> {
+  const { data, error } = await supabaseServer().rpc("notification_counts");
+  if (error) throw new Error(`Failed to load notification counts: ${error.message}`);
+  const row = data?.[0];
+  return (row?.due_soon ?? 0) + (row?.stalled ?? 0);
+}
 
 export async function getArchivedTenders(): Promise<Tender[]> {
   const { data, error } = await supabaseServer()

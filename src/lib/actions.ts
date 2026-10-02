@@ -1,11 +1,12 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { supabaseServer } from "./supabase-server";
 import { requireAdmin } from "./auth/dal";
 import { getTenderById } from "./tenders";
 import { DOCUMENT_BUCKET } from "./documents";
+import { TENDERS_TAG } from "./cache-tags";
 import { currentPeriod, periodsSorted } from "./tender-logic";
 import {
   EXTENDABLE_FIELDS,
@@ -141,6 +142,7 @@ export async function createTender(values: TenderFormValues): Promise<ActionErro
 
   revalidatePath("/");
   revalidatePath("/tenders");
+  updateTag(TENDERS_TAG);
   redirect(`/tenders/${data.id}`);
 }
 
@@ -185,6 +187,7 @@ export async function updateTender(id: string, values: TenderEditFormValues): Pr
 
   revalidatePath("/");
   revalidatePath("/tenders");
+  updateTag(TENDERS_TAG);
   revalidatePath(`/tenders/${id}`);
   redirect(`/tenders/${id}`);
 }
@@ -211,6 +214,7 @@ export async function archiveTender(id: string): Promise<ActionError | undefined
 
   revalidatePath("/");
   revalidatePath("/tenders");
+  updateTag(TENDERS_TAG);
   revalidatePath("/tenders/archive");
   revalidatePath(`/tenders/${id}`);
   redirect("/tenders");
@@ -238,6 +242,7 @@ export async function restoreTender(id: string): Promise<ActionError | undefined
 
   revalidatePath("/");
   revalidatePath("/tenders");
+  updateTag(TENDERS_TAG);
   revalidatePath("/tenders/archive");
   revalidatePath(`/tenders/${id}`);
   redirect(`/tenders/${id}`);
@@ -319,6 +324,7 @@ export async function deleteTenderPermanently(id: string): Promise<ActionError |
   });
 
   revalidatePath("/tenders/archive");
+  updateTag(TENDERS_TAG);
   redirect("/tenders/archive");
 }
 
@@ -338,6 +344,7 @@ export async function bulkArchiveTenders(ids: string[]): Promise<BulkResult> {
 
   revalidatePath("/");
   revalidatePath("/tenders");
+  updateTag(TENDERS_TAG);
   revalidatePath("/tenders/archive");
   return { count: ids.length };
 }
@@ -368,6 +375,7 @@ export async function bulkDeleteTenders(ids: string[]): Promise<BulkResult> {
 
   revalidatePath("/");
   revalidatePath("/tenders");
+  updateTag(TENDERS_TAG);
   revalidatePath("/tenders/archive");
   return { count: targetIds.length };
 }
@@ -412,6 +420,7 @@ export async function quickUpdateResult(id: string, result: string): Promise<Act
 
   revalidatePath("/");
   revalidatePath("/tenders");
+  updateTag(TENDERS_TAG);
   revalidatePath(`/tenders/${id}`);
 }
 
@@ -445,6 +454,7 @@ export async function quickUpdateMilestone(
 
   revalidatePath("/");
   revalidatePath("/tenders");
+  updateTag(TENDERS_TAG);
   revalidatePath(`/tenders/${id}`);
 }
 

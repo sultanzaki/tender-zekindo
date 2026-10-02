@@ -151,7 +151,14 @@ export interface Database {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      /** Nav badge counts, computed in Postgres — see
+       * supabase/migrations/0005_notification_counts.sql. */
+      notification_counts: {
+        Args: Record<string, never>;
+        Returns: { due_soon: number; stalled: number }[];
+      };
+    };
   };
 }
 
