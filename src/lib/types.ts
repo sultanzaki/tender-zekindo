@@ -135,6 +135,50 @@ export interface TenderDocument {
   updatedAt: string | null;
 }
 
+/** A folder in a tender's document tree. There are two trees, told apart by
+ * which key is set: `milestoneKey` for a milestone's documents,
+ * `documentTypeId` for a document-checklist item. Both nest via `parentId`.
+ * See supabase/migrations/0007_document_folders.sql. */
+export interface DocumentFolder {
+  id: string;
+  parentId: string | null;
+  name: string;
+  milestoneKey: string | null;
+  documentTypeId: string | null;
+}
+
+/** One uploaded file. `fileUrl` is a short-lived signed URL, not a public one —
+ * the bucket is private. */
+export interface DocumentFile {
+  id: string;
+  fileName: string;
+  fileUrl: string | null;
+  sizeBytes: number | null;
+  createdAt: string;
+}
+
+/** A folder plus everything directly inside it. Children are assembled from a
+ * flat list in one pass (see src/lib/folders.ts), so depth costs no extra
+ * queries. */
+export interface DocumentTreeNode {
+  folder: DocumentFolder;
+  children: DocumentTreeNode[];
+  files: DocumentFile[];
+}
+
+/** One section of the documents panel — a milestone's area, or a checklist
+ * item's. `rootFiles` are the files sitting in the section without a folder. */
+export interface DocumentSection {
+  /** Stable React key and the identifier the folder actions take. */
+  id: string;
+  title: string;
+  kind: "milestone" | "checklist";
+  milestoneKey: string | null;
+  documentTypeId: string | null;
+  folders: DocumentTreeNode[];
+  rootFiles: DocumentFile[];
+}
+
 export type TenderEventAction = "create" | "update" | "archive" | "restore" | "delete";
 
 export interface TenderEventChange {
