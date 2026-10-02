@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/auth/dal";
 import { getAllTenders } from "@/lib/tenders";
+import { getMilestoneTypes } from "@/lib/milestones";
 import {
   computeDeadlines,
   computeLossBreakdown,
@@ -18,12 +19,12 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   await requireUser();
-  const tenders = await getAllTenders();
+  const [tenders, catalog] = await Promise.all([getAllTenders(), getMilestoneTypes()]);
   const anchor = todayISO();
   const period = currentPeriod(periodsSorted(tenders.map((t) => t.period)));
 
-  const deadlines = computeDeadlines(tenders, anchor);
-  const stats = computeStats(tenders, period, anchor);
+  const deadlines = computeDeadlines(tenders, anchor, catalog);
+  const stats = computeStats(tenders, period, anchor, catalog);
   const lossBreakdown = computeLossBreakdown(tenders, period);
 
   return (

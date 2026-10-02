@@ -1,4 +1,59 @@
-import { MILESTONE_DEFS, MILESTONE_KEYS, type MilestoneKey, type Tender } from "./types";
+import { MILESTONE_DEFS, type MilestoneType, type Milestones, type Tender } from "./types";
+
+/** Mirrors DEFAULT_VISIBLE_COLUMNS in types.ts, i.e. which of the 12 built-in
+ * milestones the tender table showed before milestones became dynamic. Used only
+ * for the fallback catalog below.
+ *
+ * Declared BEFORE DEFAULT_MILESTONE_TYPES on purpose: that const evaluates its
+ * map() immediately at module load, so referencing this from below would throw a
+ * temporal-dead-zone ReferenceError on import. */
+const TABLE_VISIBLE_BY_DEFAULT = new Set<string>([
+  "regist",
+  "pq",
+  "prebid",
+  "fieldTest",
+  "openBid",
+]);
+
+/** Fallback catalog, used when a caller has not loaded the `milestone_types`
+ * rows yet. Mirrors the 12 seeded milestones so the pure logic keeps working
+ * (and stays testable) without a database round trip. Real rendering always
+ * passes the catalog from src/lib/milestones.ts.
+ *
+ * `id` is set to the key here on purpose: this synthetic catalog only exists so
+ * callers that haven't been migrated still work, and nothing in that path uses
+ * the database uuid. */
+export const DEFAULT_MILESTONE_TYPES: MilestoneType[] = MILESTONE_DEFS.map((d, i) => ({
+  id: d.key,
+  key: d.key,
+  label: d.label,
+  sortOrder: (i + 1) * 10,
+  showInTable: TABLE_VISIBLE_BY_DEFAULT.has(d.key),
+}));
+
+export interface TenderMilestone {
+  key: string;
+  label: string;
+  date: string | null;
+}
+
+/** The milestones to show for one tender, in that tender's own order.
+ *
+ * `tender.milestoneOrder === null` means "no per-tender override" -> use the
+ * catalog's default order and show every milestone in it. A non-empty array
+ * means this tender uses exactly those keys, in that order; anything the
+ * catalog has but the array omits is hidden for this tender (its date, if any,
+ * stays in `tenders.milestones` — see migration 0006). */
+export function resolveTenderMilestones(tender: Tender, catalog?: MilestoneType[]): TenderMilestone[] {
+  const types = catalog && catalog.length ? catalog : DEFAULT_MILESTONE_TYPES;
+  const order = tender.milestoneOrder;
+  const chosen = order && order.length
+    ? order
+        .map((key) => types.find((m) => m.key === key))
+        .filter((m): m is MilestoneType => !!m)
+    : types;
+  return chosen.map((m) => ({ key: m.key, label: m.label, date: tender.milestones[m.key] ?? null }));
+}
 
 const MONTHS_EN = [
   "Jan",
@@ -57,20 +112,23 @@ export function dateTone(
 }
 
 export interface NextMilestone {
-  key: MilestoneKey;
+  key: string;
   label: string;
   date: string;
   diff: number;
 }
 
-export function nextMilestone(tender: Tender, anchor: string): NextMilestone | null {
+export function nextMilestone(
+  tender: Tender,
+  anchor: string,
+  catalog?: MilestoneType[]
+): NextMilestone | null {
   let best: NextMilestone | null = null;
-  for (const d of MILESTONE_DEFS) {
-    const iso = tender.milestones[d.key];
-    if (!iso) continue;
-    const diff = daysBetween(iso, anchor);
+  for (const m of resolveTenderMilestones(tender, catalog)) {
+    if (!m.date) continue;
+    const diff = daysBetween(m.date, anchor);
     if (diff >= 0 && (!best || diff < best.diff)) {
-      best = { key: d.key, label: d.label, date: iso, diff };
+      best = { key: m.key, label: m.label, date: m.date, diff };
     }
   }
   return best;
@@ -96,11 +154,11 @@ export interface DeadlineRow {
   urgent: boolean;
 }
 
-export function computeDeadlines(tenders: Tender[], anchor: string): DeadlineRow[] {
+export function computeDeadlines(tenders: Tender[], anchor: string, catalog?: MilestoneType[]): DeadlineRow[] {
   const rows: DeadlineRow[] = [];
   for (const t of tenders) {
     if (t.result) continue;
-    const nm = nextMilestone(t, anchor);
+    const nm = nextMilestone(t, anchor, catalog);
     if (nm && nm.diff <= 14) {
       rows.push({
         tenderId: t.id,
@@ -131,16 +189,15 @@ export interface StalledRow {
 
 /** Active (no result yet) tenders with no future-dated milestone left to
  * track — likely stuck waiting on a customer decision. */
-export function computeStalled(tenders: Tender[], anchor: string): StalledRow[] {
+export function computeStalled(tenders: Tender[], anchor: string, catalog?: MilestoneType[]): StalledRow[] {
   const rows: StalledRow[] = [];
   for (const t of tenders) {
     if (t.result) continue;
-    if (nextMilestone(t, anchor)) continue;
+    if (nextMilestone(t, anchor, catalog)) continue;
     let last: { label: string; date: string } | null = null;
-    for (const d of MILESTONE_DEFS) {
-      const iso = t.milestones[d.key];
-      if (!iso) continue;
-      if (!last || iso > last.date) last = { label: d.label, date: iso };
+    for (const m of resolveTenderMilestones(t, catalog)) {
+      if (!m.date) continue;
+      if (!last || m.date > last.date) last = { label: m.label, date: m.date };
     }
     rows.push({
       tenderId: t.id,
@@ -183,9 +240,14 @@ export function currentPeriod(periods: string[]): string {
   return periods[0] || "";
 }
 
-export function computeStats(tenders: Tender[], period: string, anchor: string): DashboardStats {
+export function computeStats(
+  tenders: Tender[],
+  period: string,
+  anchor: string,
+  catalog?: MilestoneType[]
+): DashboardStats {
   const activeTenders = tenders.filter((t) => !t.result);
-  const awaiting = activeTenders.filter((t) => !nextMilestone(t, anchor)).length;
+  const awaiting = activeTenders.filter((t) => !nextMilestone(t, anchor, catalog)).length;
   const periodTenders = tenders.filter((t) => t.period === period);
   const decided = periodTenders.filter((t) => t.result === "WIN" || (t.result && t.result.indexOf("LOSS") === 0));
   const wins = periodTenders.filter((t) => t.result === "WIN").length;
@@ -223,25 +285,30 @@ export function periodsSorted(periods: (string | null | undefined)[]): string[] 
   });
 }
 
-export type SortKey =
-  | "rowNo"
-  | "area"
-  | "tenderNo"
-  | "customer"
-  | "product"
-  | "entitas"
-  | "period"
-  | "oe"
-  | "qty"
-  | "nilaiPenawaran"
-  | "pnl"
-  | "result"
-  | MilestoneKey;
+/** Field columns — everything that is NOT a milestone. Any other sort key is
+ * treated as a milestone key, because milestone keys are now data (an admin can
+ * add custom ones) rather than a compile-time union. */
+const FIELD_SORT_KEYS = new Set<string>([
+  "rowNo",
+  "area",
+  "tenderNo",
+  "customer",
+  "product",
+  "entitas",
+  "period",
+  "oe",
+  "qty",
+  "nilaiPenawaran",
+  "pnl",
+  "result",
+]);
+
+export type SortKey = string;
 
 export type SortDirection = "asc" | "desc";
 
 function getSortValue(t: Tender, key: SortKey): string | number | null {
-  if ((MILESTONE_KEYS as readonly string[]).includes(key)) return t.milestones[key as MilestoneKey];
+  if (!FIELD_SORT_KEYS.has(key)) return t.milestones[key] ?? null;
   switch (key) {
     case "rowNo":
       return t.rowNo;
@@ -295,8 +362,9 @@ export interface MilestoneOrderIssue {
 /** Flags milestone pairs entered out of their expected chronological order
  * (e.g. PQ dated before Registration). Advisory only — real tenders do
  * sometimes genuinely skip around, so callers should warn, not block. */
-export function findOutOfOrderMilestones(milestones: Partial<Record<MilestoneKey, string>>): MilestoneOrderIssue[] {
-  const dated = MILESTONE_DEFS.map((d) => ({ ...d, iso: milestones[d.key] })).filter((d) => d.iso);
+export function findOutOfOrderMilestones(milestones: Milestones, catalog?: MilestoneType[]): MilestoneOrderIssue[] {
+  const types = catalog && catalog.length ? catalog : DEFAULT_MILESTONE_TYPES;
+  const dated = types.map((d) => ({ ...d, iso: milestones[d.key] })).filter((d) => d.iso);
   const issues: MilestoneOrderIssue[] = [];
   for (let i = 0; i < dated.length; i++) {
     for (let j = i + 1; j < dated.length; j++) {

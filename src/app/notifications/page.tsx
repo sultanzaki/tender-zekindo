@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth/dal";
 import { getAllTenders } from "@/lib/tenders";
+import { getMilestoneTypes } from "@/lib/milestones";
 import { computeDeadlines, computeStalled, formatDateID, todayISO } from "@/lib/tender-logic";
 import shared from "@/components/shared.module.css";
 import styles from "./notifications.module.css";
@@ -9,11 +10,11 @@ export const dynamic = "force-dynamic";
 
 export default async function NotificationsPage() {
   await requireUser();
-  const tenders = await getAllTenders();
+  const [tenders, catalog] = await Promise.all([getAllTenders(), getMilestoneTypes()]);
   const anchor = todayISO();
 
-  const deadlines = computeDeadlines(tenders, anchor);
-  const stalledAll = computeStalled(tenders, anchor);
+  const deadlines = computeDeadlines(tenders, anchor, catalog);
+  const stalledAll = computeStalled(tenders, anchor, catalog);
   const STALLED_LIMIT = 20;
   const stalled = stalledAll.slice(0, STALLED_LIMIT);
 

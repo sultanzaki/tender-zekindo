@@ -10,11 +10,9 @@ import { TENDERS_TAG } from "./cache-tags";
 import { currentPeriod, periodsSorted } from "./tender-logic";
 import {
   EXTENDABLE_FIELDS,
-  MILESTONE_KEYS,
   RESULT_ENUM,
   type ExtendableField,
   type Milestones,
-  type MilestoneKey,
   type Tender,
   type TenderEditFormValues,
   type TenderEventAction,
@@ -31,10 +29,23 @@ function parseNumericInput(raw: string): number | null {
   return digits ? Number(digits) : null;
 }
 
-function buildMilestones(input: TenderFormValues["milestones"]): Milestones {
-  const out = {} as Milestones;
-  for (const key of MILESTONE_KEYS) {
-    out[key] = input[key] || null;
+/** Milestone keys are admin-authored data now (they become jsonb keys in
+ * `tenders.milestones` and entries in `milestone_types.key`), so they are
+ * validated rather than trusted from the client. */
+const MILESTONE_KEY_PATTERN = /^[a-zA-Z][a-zA-Z0-9_]*$/;
+
+/** Builds the milestone jsonb for a save.
+ *
+ * `base` is the row's existing milestones, and submitted keys are merged on top
+ * of it rather than replacing it. That matters: a tender can have a per-tender
+ * milestone list (see `tenders.milestone_order`), and the form does not submit
+ * milestones the tender doesn't show. Replacing the whole object would silently
+ * delete the dates of every hidden milestone. */
+function buildMilestones(input: Record<string, string>, base: Milestones = {}): Milestones {
+  const out: Milestones = { ...base };
+  for (const [key, value] of Object.entries(input)) {
+    if (!MILESTONE_KEY_PATTERN.test(key)) continue;
+    out[key] = value || null;
   }
   return out;
 }
@@ -90,7 +101,7 @@ async function logTenderEvent(params: {
   if (error) console.error("Failed to write tender_events row:", error.message);
 }
 
-function toInsertPayload(values: TenderFormValues) {
+function toInsertPayload(values: TenderFormValues, milestoneBase: Milestones = {}) {
   return {
     area: values.area,
     tender_no: values.tenderNo || null,
@@ -101,7 +112,7 @@ function toInsertPayload(values: TenderFormValues) {
     oe: parseNumericInput(values.oe),
     oe_catatan: values.oeCatatan || null,
     nilai_penawaran: parseNumericInput(values.nilaiPenawaran),
-    milestones: buildMilestones(values.milestones),
+    milestones: buildMilestones(values.milestones, milestoneBase),
   };
 }
 
@@ -163,7 +174,7 @@ export async function updateTender(id: string, values: TenderEditFormValues): Pr
   if (beforeError || !before) return { error: "Tender not found." };
 
   const patch = {
-    ...toInsertPayload(values),
+    ...toInsertPayload(values, before.milestones),
     result: values.result || null,
     carry_over: values.carryOver || null,
     remarks: values.remarks || null,
@@ -426,10 +437,11 @@ export async function quickUpdateResult(id: string, result: string): Promise<Act
 
 export async function quickUpdateMilestone(
   id: string,
-  key: MilestoneKey,
+  key: string,
   value: string
 ): Promise<ActionError | undefined> {
   const ctx = await requireAdmin();
+  if (!MILESTONE_KEY_PATTERN.test(key)) return { error: "Invalid milestone key." };
 
   const { data: before, error: beforeError } = await supabaseServer()
     .from("tenders")

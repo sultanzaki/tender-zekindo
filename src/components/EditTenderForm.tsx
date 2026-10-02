@@ -1,13 +1,14 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { archiveTender, updateTender } from "@/lib/actions";
+import { setTenderMilestoneOrder } from "@/lib/milestone-actions";
 import { findDuplicateTenderNo, findOutOfOrderMilestones } from "@/lib/tender-logic";
 import {
-  MILESTONE_DEFS,
   RESULT_ENUM,
-  type MilestoneKey,
+  type MilestoneType,
   type SelectOptionsMap,
   type Tender,
   type TenderEditFormValues,
@@ -18,9 +19,12 @@ import shared from "./shared.module.css";
 import styles from "./NewTenderForm.module.css";
 
 function toFormValues(tender: Tender): TenderEditFormValues {
-  const milestones: Partial<Record<MilestoneKey, string>> = {};
-  for (const d of MILESTONE_DEFS) {
-    milestones[d.key] = tender.milestones[d.key] || "";
+  // Copies every key the row actually has, not just the built-in 12: a tender
+  // can carry milestone keys that are no longer in the catalog, and dropping
+  // them here would make them look deleted in the form.
+  const milestones: Record<string, string> = {};
+  for (const [key, value] of Object.entries(tender.milestones)) {
+    milestones[key] = value || "";
   }
   return {
     area: tender.area,
@@ -45,29 +49,94 @@ function toFormValues(tender: Tender): TenderEditFormValues {
 export function EditTenderForm({
   tender,
   selectOptions,
+  milestoneTypes,
   existingTenders,
 }: {
   tender: Tender;
   selectOptions: SelectOptionsMap;
+  milestoneTypes: MilestoneType[];
   existingTenders: { id: string; tenderNo: string | null }[];
 }) {
+  const router = useRouter();
   const [formData, setFormData] = useState<TenderEditFormValues>(() => toFormValues(tender));
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  // Per-tender milestone order/subset. `null` in the row means "use the catalog
+  // default", which is what this initialises to.
+  const [order, setOrder] = useState<string[]>(
+    () => tender.milestoneOrder ?? milestoneTypes.map((m) => m.key)
+  );
+  const [orderBusy, setOrderBusy] = useState(false);
+  const [orderMessage, setOrderMessage] = useState<string | null>(null);
+  const addSelectRef = useRef<HTMLSelectElement>(null);
+
+  const catalogByKey = useMemo(() => new Map(milestoneTypes.map((m) => [m.key, m])), [milestoneTypes]);
+  const orderedDefs = useMemo(
+    () => order.map((k) => catalogByKey.get(k)).filter((m): m is MilestoneType => !!m),
+    [order, catalogByKey]
+  );
+  const hiddenDefs = useMemo(
+    () => milestoneTypes.filter((m) => !order.includes(m.key)),
+    [milestoneTypes, order]
+  );
 
   const isDuplicateTenderNo = useMemo(
     () => findDuplicateTenderNo(formData.tenderNo, existingTenders, tender.id),
     [formData.tenderNo, existingTenders, tender.id]
   );
-  const milestoneOrderIssues = useMemo(() => findOutOfOrderMilestones(formData.milestones), [formData.milestones]);
+  const milestoneOrderIssues = useMemo(
+    () => findOutOfOrderMilestones(formData.milestones, milestoneTypes),
+    [formData.milestones, milestoneTypes]
+  );
 
   function field<K extends keyof TenderEditFormValues>(key: K) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
       setFormData((f) => ({ ...f, [key]: e.target.value }));
   }
 
-  function setMilestone(key: MilestoneKey, value: string) {
+  function setMilestone(key: string, value: string) {
     setFormData((f) => ({ ...f, milestones: { ...f.milestones, [key]: value } }));
+  }
+
+  // ── Per-tender milestone order ──────────────────────────────────────────
+  function moveInOrder(index: number, delta: -1 | 1) {
+    const target = index + delta;
+    if (target < 0 || target >= order.length) return;
+    setOrder((o) => {
+      const next = [...o];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+    setOrderMessage(null);
+  }
+
+  function removeFromOrder(key: string) {
+    setOrder((o) => o.filter((k) => k !== key));
+    setOrderMessage(null);
+  }
+
+  function addFromSelect() {
+    const key = addSelectRef.current?.value;
+    if (!key) return;
+    setOrder((o) => (o.includes(key) ? o : [...o, key]));
+    if (addSelectRef.current) addSelectRef.current.value = "";
+    setOrderMessage(null);
+  }
+
+  function saveOrder() {
+    setOrderBusy(true);
+    setOrderMessage(null);
+    startTransition(async () => {
+      const result = await setTenderMilestoneOrder(tender.id, order);
+      setOrderBusy(false);
+      if (result?.error) {
+        setOrderMessage(result.error);
+        return;
+      }
+      setOrderMessage("Milestone order saved.");
+      router.refresh();
+    });
   }
 
   function handleSubmit() {
@@ -257,6 +326,73 @@ export function EditTenderForm({
           </label>
         </div>
 
+        {/* Per-tender milestone order & selection. Saving this writes
+            `tenders.milestone_order`; the date inputs below follow the order. */}
+        <div className={styles.hint} style={{ marginTop: 20 }}>
+          Milestone order for this tender. Use ↑ ↓ to reorder, Remove to hide one from this tender. Dates that were
+          already saved are kept even when a milestone is hidden, so nothing is lost by reordering.
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "10px 0" }}>
+          {orderedDefs.map((m, i) => (
+            <div key={m.key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ flex: 1, fontSize: 13 }}>
+                {i + 1}. {m.label}
+              </span>
+              <button
+                type="button"
+                className={styles.backButton}
+                onClick={() => moveInOrder(i, -1)}
+                disabled={i === 0 || orderBusy}
+                title="Move up"
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                className={styles.backButton}
+                onClick={() => moveInOrder(i, 1)}
+                disabled={i === orderedDefs.length - 1 || orderBusy}
+                title="Move down"
+              >
+                ↓
+              </button>
+              <button
+                type="button"
+                className={styles.backButton}
+                onClick={() => removeFromOrder(m.key)}
+                disabled={orderBusy}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {hiddenDefs.length > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "10px 0" }}>
+            <select ref={addSelectRef} className={styles.input} defaultValue="">
+              <option value="" disabled>
+                Add a hidden milestone…
+              </option>
+              {hiddenDefs.map((m) => (
+                <option key={m.key} value={m.key}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+            <button type="button" className={styles.backButton} onClick={addFromSelect} disabled={orderBusy}>
+              Add
+            </button>
+          </div>
+        )}
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+          <button type="button" className={styles.backButton} onClick={saveOrder} disabled={orderBusy}>
+            {orderBusy ? "Saving…" : "Save milestone order"}
+          </button>
+          {orderMessage && <span className={styles.hint}>{orderMessage}</span>}
+        </div>
+
         <div className={styles.hint} style={{ marginTop: 20 }}>
           Milestone dates can be left blank if not yet known.
         </div>
@@ -271,14 +407,14 @@ export function EditTenderForm({
           </div>
         )}
         <div className={styles.milestoneGrid}>
-          {MILESTONE_DEFS.map((d) => (
-            <label key={d.key} className={styles.label}>
-              {d.label}
+          {orderedDefs.map((m) => (
+            <label key={m.key} className={styles.label}>
+              {m.label}
               <input
                 type="date"
                 className={styles.input}
-                value={formData.milestones[d.key] || ""}
-                onChange={(e) => setMilestone(d.key, e.target.value)}
+                value={formData.milestones[m.key] || ""}
+                onChange={(e) => setMilestone(m.key, e.target.value)}
               />
             </label>
           ))}

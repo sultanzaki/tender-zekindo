@@ -1,10 +1,15 @@
 import ExcelJS from "exceljs";
 import { requireUser } from "@/lib/auth/dal";
 import { getAllTenders } from "@/lib/tenders";
+import { getMilestoneTypes } from "@/lib/milestones";
 import { filterTenders } from "@/lib/tender-logic";
-import { MILESTONE_DEFS } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+
+/** Column keys for milestones are prefixed so a custom milestone keyed e.g.
+ * "area" cannot collide with a fixed column key and silently overwrite it —
+ * ExcelJS keys must be unique per sheet. */
+const msKey = (key: string) => `ms_${key}`;
 
 export async function GET(request: Request) {
   const ctx = await requireUser();
@@ -21,11 +26,15 @@ export async function GET(request: Request) {
   };
 
   const tenders = await getAllTenders();
+  const milestoneTypes = await getMilestoneTypes();
   const rows = filterTenders(tenders, filters);
 
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Tenders");
 
+  // Excel is a fixed grid, so the milestone columns come from the catalog in
+  // default order. A tender's own `milestone_order` only affects the app's
+  // display; the underlying dates are still exported under their own column.
   sheet.columns = [
     { header: "No", key: "no", width: 6 },
     { header: "Area", key: "area", width: 14 },
@@ -39,7 +48,7 @@ export async function GET(request: Request) {
     { header: "OE Note", key: "oeCatatan", width: 20 },
     { header: "Bid Value (Rp)", key: "nilaiPenawaran", width: 16 },
     { header: "P&L", key: "pnl", width: 8 },
-    ...MILESTONE_DEFS.map((d) => ({ header: d.label, key: d.key, width: 16 })),
+    ...milestoneTypes.map((m) => ({ header: m.label, key: msKey(m.key), width: 16 })),
     { header: "Result", key: "result", width: 20 },
     { header: "Carry Over", key: "carryOver", width: 20 },
     { header: "Remarks", key: "remarks", width: 50 },
@@ -62,7 +71,7 @@ export async function GET(request: Request) {
       oeCatatan: t.oeCatatan,
       nilaiPenawaran: t.nilaiPenawaran,
       pnl: t.pnl ? "Yes" : "",
-      ...Object.fromEntries(MILESTONE_DEFS.map((d) => [d.key, t.milestones[d.key]])),
+      ...Object.fromEntries(milestoneTypes.map((m) => [msKey(m.key), t.milestones[m.key]])),
       result: t.result,
       carryOver: t.carryOver,
       remarks: t.remarks,

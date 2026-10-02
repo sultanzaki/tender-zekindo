@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { createTender } from "@/lib/actions";
 import { findDuplicateTenderNo, findOutOfOrderMilestones } from "@/lib/tender-logic";
-import { MILESTONE_DEFS, type MilestoneKey, type SelectOptionsMap, type TenderFormValues } from "@/lib/types";
+import { type MilestoneType, type SelectOptionsMap, type TenderFormValues } from "@/lib/types";
 import { OptionSelect } from "./OptionSelect";
 import { NumberInput } from "./NumberInput";
 import shared from "./shared.module.css";
@@ -26,9 +26,11 @@ const STEP_LABELS = ["Tender Details", "Value & Entity", "Milestone Dates"];
 
 export function NewTenderForm({
   selectOptions,
+  milestoneTypes,
   existingTenders,
 }: {
   selectOptions: SelectOptionsMap;
+  milestoneTypes: MilestoneType[];
   existingTenders: { id: string; tenderNo: string | null }[];
 }) {
   const [step, setStep] = useState(1);
@@ -41,7 +43,7 @@ export function NewTenderForm({
       setFormData((f) => ({ ...f, [key]: e.target.value }));
   }
 
-  function setMilestone(key: MilestoneKey, value: string) {
+  function setMilestone(key: string, value: string) {
     setFormData((f) => ({ ...f, milestones: { ...f.milestones, [key]: value } }));
   }
 
@@ -49,7 +51,10 @@ export function NewTenderForm({
     () => findDuplicateTenderNo(formData.tenderNo, existingTenders),
     [formData.tenderNo, existingTenders]
   );
-  const milestoneOrderIssues = useMemo(() => findOutOfOrderMilestones(formData.milestones), [formData.milestones]);
+  const milestoneOrderIssues = useMemo(
+    () => findOutOfOrderMilestones(formData.milestones, milestoneTypes),
+    [formData.milestones, milestoneTypes]
+  );
 
   function handleSubmit() {
     setError(null);
@@ -195,14 +200,14 @@ export function NewTenderForm({
               </div>
             )}
             <div className={styles.milestoneGrid}>
-              {MILESTONE_DEFS.map((d) => (
-                <label key={d.key} className={styles.label}>
-                  {d.label}
+              {milestoneTypes.map((m) => (
+                <label key={m.key} className={styles.label}>
+                  {m.label}
                   <input
                     type="date"
                     className={styles.input}
-                    value={formData.milestones[d.key] || ""}
-                    onChange={(e) => setMilestone(d.key, e.target.value)}
+                    value={formData.milestones[m.key] || ""}
+                    onChange={(e) => setMilestone(m.key, e.target.value)}
                   />
                 </label>
               ))}

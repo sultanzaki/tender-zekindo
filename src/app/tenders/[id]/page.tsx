@@ -4,8 +4,8 @@ import { requireUser } from "@/lib/auth/dal";
 import { restoreTenderForm } from "@/lib/actions";
 import { getTenderById } from "@/lib/tenders";
 import { getTenderDocuments } from "@/lib/documents";
-import { MILESTONE_DEFS } from "@/lib/types";
-import { dateTone, formatDateID, formatRupiah, todayISO } from "@/lib/tender-logic";
+import { getMilestoneTypes } from "@/lib/milestones";
+import { dateTone, formatDateID, formatRupiah, resolveTenderMilestones, todayISO } from "@/lib/tender-logic";
 import { ResultBadge } from "@/components/ResultBadge";
 import { DocumentChecklist } from "@/components/DocumentChecklist";
 import shared from "@/components/shared.module.css";
@@ -36,9 +36,15 @@ export default async function TenderDetailPage({ params }: { params: Promise<{ i
   const { id } = await params;
   const tender = await getTenderById(id);
   if (!tender) notFound();
-  const documents = await getTenderDocuments(tender.id);
+  // Independent reads — issued together rather than one after the other.
+  const [documents, milestoneTypes] = await Promise.all([
+    getTenderDocuments(tender.id),
+    getMilestoneTypes(),
+  ]);
 
   const anchor = todayISO();
+  // This tender's own milestone order/subset, falling back to the catalog order.
+  const milestones = resolveTenderMilestones(tender, milestoneTypes);
 
   return (
     <div className={styles.page}>
@@ -113,18 +119,18 @@ export default async function TenderDetailPage({ params }: { params: Promise<{ i
       <div className={styles.grid2}>
         <div className={`${shared.card} ${styles.panel}`}>
           <h2 className={styles.panelTitle}>Milestone Timeline</h2>
-          {MILESTONE_DEFS.map((d, i) => {
-            const iso = tender.milestones[d.key];
+          {milestones.map((m, i) => {
+            const iso = m.date;
             const tone = dateTone(iso, tender.result, anchor);
-            const isLast = i === MILESTONE_DEFS.length - 1;
+            const isLast = i === milestones.length - 1;
             return (
-              <div key={d.key} className={styles.timelineRow}>
+              <div key={m.key} className={styles.timelineRow}>
                 <div className={styles.timelineRail}>
                   <div className={styles.timelineDot} style={{ background: DOT_COLOR[tone] }} />
                   {!isLast && <div className={styles.timelineLine} />}
                 </div>
                 <div className={styles.timelineBody}>
-                  <div className={styles.timelineLabel}>{d.label}</div>
+                  <div className={styles.timelineLabel}>{m.label}</div>
                   <div className={styles.timelineDate} style={{ color: DATE_COLOR[tone] }}>
                     {iso ? formatDateID(iso) : "Not yet set"}
                   </div>

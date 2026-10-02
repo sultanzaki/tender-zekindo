@@ -20,6 +20,7 @@ export interface Database {
           oe_catatan: string | null;
           idr_per_l: number | null;
           milestones: Milestones;
+          milestone_order: string[] | null;
           result: string | null;
           carry_over: string | null;
           remarks: string | null;
@@ -149,6 +150,24 @@ export interface Database {
         Update: Partial<Database["public"]["Tables"]["sessions"]["Row"]>;
         Relationships: [];
       };
+      milestone_types: {
+        Row: {
+          id: string;
+          key: string;
+          label: string;
+          sort_order: number;
+          show_in_table: boolean;
+          archived_at: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["milestone_types"]["Row"]> & {
+          key: string;
+          label: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["milestone_types"]["Row"]>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -170,3 +189,4 @@ export type ErrorLogRow = Database["public"]["Tables"]["error_log"]["Row"];
 export type DocumentTypeRow = Database["public"]["Tables"]["document_types"]["Row"];
 export type TenderDocumentRow = Database["public"]["Tables"]["tender_documents"]["Row"];
 export type SessionRow = Database["public"]["Tables"]["sessions"]["Row"];
+export type MilestoneTypeRow = Database["public"]["Tables"]["milestone_types"]["Row"];
