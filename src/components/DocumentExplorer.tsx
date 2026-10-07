@@ -403,6 +403,11 @@ export function DocumentExplorer({
       {error && (
         <div style={{ marginTop: 8, fontSize: 12.5, color: "var(--zk-error, #b91c1c)" }}>{error}</div>
       )}
+      {pending && !error && (
+        <div style={{ marginTop: 8, fontSize: 12.5, color: "var(--zk-gray-500, #64748b)" }}>
+          ⏳ Mengupload…
+        </div>
+      )}
     </div>
   );
 }
