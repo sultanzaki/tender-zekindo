@@ -3,9 +3,10 @@ import { cache } from "react";
 import { unstable_cache } from "next/cache";
 import { supabaseServer } from "./supabase-server";
 import type { TenderRow } from "./database.types";
-import type { FilterOptions, SelectOptionsMap, Tender } from "./types";
+import type { FilterOptions, SelectOptionsMap, Tender, Track } from "./types";
 import { distinctSorted, periodsSorted } from "./tender-logic";
 import { getProfilesByIds } from "./users";
+import { rowTrack } from "./milestones";
 import { TENDERS_TAG } from "./cache-tags";
 
 // PostgREST (Supabase's REST layer) serializes `numeric` columns as JSON
@@ -23,6 +24,7 @@ function mapRow(row: TenderRow, names: Map<string, string>): Tender {
   return {
     id: row.id,
     rowNo: row.row_no,
+    track: rowTrack(row.track),
     period: row.period,
     area: row.area,
     tenderNo: row.tender_no,
@@ -69,9 +71,12 @@ async function withNames(rows: TenderRow[]): Promise<Tender[]> {
 // `revalidate` is a backstop for any write that bypasses those Server Actions
 // (e.g. SQL pasted straight into the Supabase editor).
 const getTendersCached = unstable_cache(
-  async (includeArchived: boolean): Promise<Tender[]> => {
+  async (includeArchived: boolean, track: Track | "all"): Promise<Tender[]> => {
     let query = supabaseServer().from("tenders").select("*").order("row_no", { ascending: true });
     if (!includeArchived) query = query.is("archived_at", null);
+    // "all" is what the screens that span both tracks ask for: /notifications,
+    // the nav badge path and the analytics "both" option.
+    if (track !== "all") query = query.eq("track", track);
     const { data, error } = await query;
     if (error) throw new Error(`Failed to load tenders: ${error.message}`);
     return withNames(data ?? []);
@@ -82,8 +87,8 @@ const getTendersCached = unstable_cache(
 
 // `cache()` on top so several components in one render share a single lookup.
 export const getAllTenders = cache(
-  async (options?: { includeArchived?: boolean }): Promise<Tender[]> =>
-    getTendersCached(Boolean(options?.includeArchived)),
+  async (options?: { includeArchived?: boolean; track?: Track | "all" }): Promise<Tender[]> =>
+    getTendersCached(Boolean(options?.includeArchived), options?.track ?? "all"),
 );
 
 export interface NotificationCounts {

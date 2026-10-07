@@ -140,14 +140,29 @@ export async function createTender(values: TenderFormValues): Promise<ActionErro
   // catalog when milestones are later added, renamed or reordered. Unknown keys
   // are dropped rather than written, so a tampered payload cannot put junk in
   // the column.
-  const catalogOrder = (await getMilestoneTypes()).map((m) => m.key);
+  const catalogOrder = (await getMilestoneTypes(values.track)).map((m) => m.key);
   const requestedOrder = (values.milestoneOrder ?? catalogOrder).filter((k) => catalogOrder.includes(k));
   const milestoneOrder = sameOrder(requestedOrder, catalogOrder) ? null : requestedOrder;
+
+  // Only THIS track's milestones are stored. The new-tender form offers BOTH
+  // catalogs so you can switch and compare before saving; without this filter,
+  // dates typed for the other track would be written into the row and then
+  // ignored by every reader (the two catalogs use different keys), i.e. data
+  // that looks saved but never appears anywhere.
+  const catalogKeys = new Set(catalogOrder);
+  const milestones = Object.fromEntries(
+    Object.entries(values.milestones).filter(([key]) => catalogKeys.has(key))
+  );
 
   const { data, error } = await supabaseServer()
     .from("tenders")
     .insert({
-      ...toInsertPayload(values),
+      ...toInsertPayload({ ...values, milestones }),
+      // `track` is set here and nowhere else. It is deliberately NOT part of
+      // toInsertPayload(), which updateTender also uses: a tender must never
+      // change track, because its milestone dates are keyed by that track's
+      // catalog. Switching would silently orphan every date it has.
+      track: values.track,
       milestone_order: milestoneOrder,
       period,
       created_by: ctx.userId,

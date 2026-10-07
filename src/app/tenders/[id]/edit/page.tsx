@@ -12,10 +12,13 @@ export default async function EditTenderPage({ params }: { params: Promise<{ id:
   const tender = await getTenderById(id);
   if (!tender) notFound();
 
-  const allTenders = await getAllTenders({ includeArchived: true });
+  // The catalog comes from the tender's own track, and the sibling suggestions
+  // are limited to it too: an upstream tender must not offer a downstream
+  // tender's number, and the milestones shown must be its own.
+  const allTenders = await getAllTenders({ includeArchived: true, track: tender.track });
   const [selectOptions, milestoneTypes] = await Promise.all([
     getSelectOptions(allTenders),
-    getMilestoneTypes(),
+    getMilestoneTypes(tender.track),
   ]);
   const existingTenders = allTenders.map((t) => ({ id: t.id, tenderNo: t.tenderNo }));
 

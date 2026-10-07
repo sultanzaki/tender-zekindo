@@ -4,13 +4,24 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import { createTender } from "@/lib/actions";
 import { ensureMilestoneTypeByName } from "@/lib/milestone-actions";
 import { findDuplicateTenderNo, findOutOfOrderMilestones } from "@/lib/tender-logic";
-import { type MilestoneType, type SelectOptionsMap, type TenderFormValues } from "@/lib/types";
+import {
+  TRACKS,
+  TRACK_LABELS,
+  type MilestoneType,
+  type SelectOptionsMap,
+  type TenderFormValues,
+  type Track,
+} from "@/lib/types";
 import { OptionSelect } from "./OptionSelect";
 import { NumberInput } from "./NumberInput";
 import shared from "./shared.module.css";
 import styles from "./NewTenderForm.module.css";
 
 const EMPTY_FORM: TenderFormValues = {
+  // Replaced by initialTrack below. The form only ever CREATES a tender inside a
+  // track; once created, a tender's track can never change (its milestone dates
+  // live in a jsonb keyed by milestone key, and the two tracks use different keys).
+  track: "upstream",
   area: "",
   tenderNo: "",
   customer: "",
@@ -26,33 +37,62 @@ const EMPTY_FORM: TenderFormValues = {
 const STEP_LABELS = ["Tender Details", "Value & Entity", "Milestone Dates"];
 
 export function NewTenderForm({
+  initialTrack,
   selectOptions,
-  milestoneTypes,
+  catalogs,
   existingTenders,
 }: {
+  /** The track the form opens on, carried from the list page's URL. Changeable
+   * here, because creating is the only moment a track is picked. */
+  initialTrack: Track;
   selectOptions: SelectOptionsMap;
-  milestoneTypes: MilestoneType[];
+  /** BOTH catalogs, so switching the picker swaps the milestone list instantly.
+   * Milestone keys never overlap between tracks (`ds…` prefix), so dates already
+   * typed for one track survive a round trip to the other. */
+  catalogs: Record<Track, MilestoneType[]>;
   existingTenders: { id: string; tenderNo: string | null }[];
 }) {
   const [step, setStep] = useState(1);
-  const [formData, setFormData] = useState<TenderFormValues>(EMPTY_FORM);
+  const [formData, setFormData] = useState<TenderFormValues>({ ...EMPTY_FORM, track: initialTrack });
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  // The chosen track lives in formData rather than in its own useState: one
+  // source of truth, and createTender receives exactly the same value the
+  // milestone list below is showing.
+  const track = formData.track;
+  const milestoneTypes = catalogs[track];
 
   // Milestone order/subset for the tender being created. Starts as the catalog
   // order; anything the user changes here is saved into tenders.milestone_order
   // on submit, so the choice is made before the tender exists rather than only
   // afterwards in the edit form.
-  const [order, setOrder] = useState<string[]>(() => milestoneTypes.map((m) => m.key));
+  //
+  // Kept PER TRACK: the two catalogs are independent, so reordering milestones
+  // while looking at downstream must not disturb the upstream list.
+  const [orders, setOrders] = useState<Record<Track, string[]>>(() => ({
+    upstream: catalogs.upstream.map((m) => m.key),
+    downstream: catalogs.downstream.map((m) => m.key),
+  }));
+  const order = orders[track];
+  const setOrder = (update: (prev: string[]) => string[]) =>
+    setOrders((prev) => ({ ...prev, [track]: update(prev[track]) }));
+
   const addSelectRef = useRef<HTMLSelectElement>(null);
 
   // Milestones created from this form, kept locally because the catalog prop was
   // read on the server before they existed. Without this the new milestone would
-  // be in the order array but have no label to render.
-  const [extraTypes, setExtraTypes] = useState<MilestoneType[]>([]);
+  // be in the order array but have no label to render. Per track as well: a
+  // milestone created for a downstream tender has no business appearing in the
+  // upstream list.
+  const [extraTypes, setExtraTypes] = useState<Record<Track, MilestoneType[]>>({
+    upstream: [],
+    downstream: [],
+  });
+  const extra = extraTypes[track];
   const [newMilestoneLabel, setNewMilestoneLabel] = useState("");
   const [creating, setCreating] = useState(false);
-  const allTypes = useMemo(() => [...milestoneTypes, ...extraTypes], [milestoneTypes, extraTypes]);
+  const allTypes = useMemo(() => [...milestoneTypes, ...extra], [milestoneTypes, extra]);
 
   const catalogByKey = useMemo(() => new Map(allTypes.map((m) => [m.key, m])), [allTypes]);
   const orderedDefs = useMemo(
@@ -64,27 +104,43 @@ export function NewTenderForm({
     [allTypes, order]
   );
 
+  function chooseTrack(next: Track) {
+    if (next === track) return;
+    setFormData((f) => ({ ...f, track: next }));
+  }
+
   /** Creates the milestone (or reuses it if the name exists) and puts it at the
    * end of this tender's order. */
   function createMilestone() {
     const label = newMilestoneLabel.trim();
     if (!label) return;
+    // Captured: if the track is switched while the request is in flight, the
+    // milestone still lands in the catalog it was created for.
+    const targetTrack = track;
     setError(null);
     setCreating(true);
     startTransition(async () => {
-      const result = await ensureMilestoneTypeByName(label);
+      const result = await ensureMilestoneTypeByName(label, targetTrack);
       setCreating(false);
       const key = result.key;
       if (result.error || !key) {
         setError(result.error ?? "Gagal membuat milestone.");
         return;
       }
-      setExtraTypes((types) =>
-        types.some((t) => t.key === key)
-          ? types
-          : [...types, { id: key, key, label, sortOrder: 0, showInTable: false }]
+      setExtraTypes((prev) =>
+        prev[targetTrack].some((t) => t.key === key)
+          ? prev
+          : {
+              ...prev,
+              [targetTrack]: [
+                ...prev[targetTrack],
+                { id: key, key, track: targetTrack, label, sortOrder: 0, showInTable: false },
+              ],
+            }
       );
-      setOrder((o) => (o.includes(key) ? o : [...o, key]));
+      setOrders((prev) =>
+        prev[targetTrack].includes(key) ? prev : { ...prev, [targetTrack]: [...prev[targetTrack], key] }
+      );
       setNewMilestoneLabel("");
     });
   }
@@ -137,6 +193,45 @@ export function NewTenderForm({
     });
   }
 
+  /** Upstream | Downstream. Shown on step 1 (where the tender's identity is
+   * decided) and again on step 3, because that is where its effect is visible:
+   * the milestone list and the date inputs below it come from this choice. */
+  const trackPicker = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <span style={{ fontSize: 13, fontWeight: 500 }}>Track</span>
+      <div style={{ display: "flex", gap: 8 }}>
+        {TRACKS.map((t) => {
+          const active = t === track;
+          return (
+            <button
+              key={t}
+              type="button"
+              onClick={() => chooseTrack(t)}
+              disabled={isPending}
+              aria-pressed={active}
+              style={{
+                padding: "6px 14px",
+                fontSize: 13,
+                borderRadius: 6,
+                border: `1px solid ${active ? "var(--color-accent, #2563eb)" : "rgba(0,0,0,0.15)"}`,
+                background: active ? "var(--color-accent, #2563eb)" : "transparent",
+                color: active ? "#fff" : "inherit",
+                fontWeight: active ? 600 : 400,
+                cursor: "pointer",
+              }}
+            >
+              {TRACK_LABELS[t]}
+            </button>
+          );
+        })}
+      </div>
+      <span className={styles.hint}>
+        {milestoneTypes.length} milestones for this track. A tender&apos;s track cannot be changed after it is
+        created.
+      </span>
+    </div>
+  );
+
   return (
     <div className={styles.page}>
       <div className={`${shared.card} ${styles.card}`}>
@@ -156,6 +251,7 @@ export function NewTenderForm({
 
         {step === 1 && (
           <div className={styles.fieldColumn}>
+            {trackPicker}
             <label className={styles.label}>
               Area <span className={styles.required}>*</span>
               <OptionSelect
@@ -261,6 +357,8 @@ export function NewTenderForm({
 
         {step === 3 && (
           <div>
+            <div style={{ marginBottom: 14 }}>{trackPicker}</div>
+
             {/* Milestone order & selection for the tender being created. Saved
                 into tenders.milestone_order when the tender is created; the date
                 inputs below follow the order. */}

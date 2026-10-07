@@ -1,4 +1,4 @@
-import { MILESTONE_DEFS, type MilestoneType, type Milestones, type Tender } from "./types";
+import { DOWNSTREAM_MILESTONE_DEFS, MILESTONE_DEFS, type MilestoneType, type Milestones, type Tender, type Track } from "./types";
 
 /** Mirrors DEFAULT_VISIBLE_COLUMNS in types.ts, i.e. which of the 12 built-in
  * milestones the tender table showed before milestones became dynamic. Used only
@@ -26,10 +26,46 @@ const TABLE_VISIBLE_BY_DEFAULT = new Set<string>([
 export const DEFAULT_MILESTONE_TYPES: MilestoneType[] = MILESTONE_DEFS.map((d, i) => ({
   id: d.key,
   key: d.key,
+  track: "upstream",
   label: d.label,
   sortOrder: (i + 1) * 10,
   showInTable: TABLE_VISIBLE_BY_DEFAULT.has(d.key),
 }));
+
+/** Which downstream milestones start visible in the tender table. Mirrors the
+ * seed in migration 0009: the ones that mark process gates, so the table shows
+ * five columns there — the same count as upstream. */
+const DOWNSTREAM_TABLE_VISIBLE_BY_DEFAULT = new Set<string>([
+  "dsPendaftaran",
+  "dsPrakualifikasi",
+  "dsPrebid",
+  "dsBidding",
+  "dsNegosiasi3",
+]);
+
+export const DEFAULT_MILESTONE_TYPES_DOWNSTREAM: MilestoneType[] = DOWNSTREAM_MILESTONE_DEFS.map((d, i) => ({
+  id: d.key,
+  key: d.key,
+  track: "downstream",
+  label: d.label,
+  sortOrder: (i + 1) * 10,
+  showInTable: DOWNSTREAM_TABLE_VISIBLE_BY_DEFAULT.has(d.key),
+}));
+
+/** The built-in catalog for one track — the fallback when the database catalog
+ * cannot be read. */
+export function defaultMilestoneTypes(track: Track): MilestoneType[] {
+  return track === "downstream" ? DEFAULT_MILESTONE_TYPES_DOWNSTREAM : DEFAULT_MILESTONE_TYPES;
+}
+
+/** Both tracks' catalogs, keyed by track.
+ *
+ * Every helper below takes one of these rather than a single list, because a
+ * page that shows both tracks at once (/notifications, the nav badge) would
+ * otherwise resolve downstream tenders against the upstream catalog and render
+ * them with no milestones at all — silently, since "no milestones" is also a
+ * legitimate state for a tender that hid them all. */
+export type MilestoneCatalog = Partial<Record<Track, MilestoneType[]>>;
 
 export interface TenderMilestone {
   key: string;
@@ -44,8 +80,9 @@ export interface TenderMilestone {
  * means this tender uses exactly those keys, in that order; anything the
  * catalog has but the array omits is hidden for this tender (its date, if any,
  * stays in `tenders.milestones` — see migration 0006). */
-export function resolveTenderMilestones(tender: Tender, catalog?: MilestoneType[]): TenderMilestone[] {
-  const types = catalog && catalog.length ? catalog : DEFAULT_MILESTONE_TYPES;
+export function resolveTenderMilestones(tender: Tender, catalog?: MilestoneCatalog): TenderMilestone[] {
+  const forTrack = catalog?.[tender.track];
+  const types = forTrack && forTrack.length ? forTrack : defaultMilestoneTypes(tender.track);
   const order = tender.milestoneOrder;
   const chosen = order && order.length
     ? order
@@ -121,7 +158,7 @@ export interface NextMilestone {
 export function nextMilestone(
   tender: Tender,
   anchor: string,
-  catalog?: MilestoneType[]
+  catalog?: MilestoneCatalog
 ): NextMilestone | null {
   let best: NextMilestone | null = null;
   for (const m of resolveTenderMilestones(tender, catalog)) {
@@ -152,6 +189,9 @@ export interface DeadlineRow {
   milestoneLabel: string;
   dateFormatted: string;
   urgent: boolean;
+  /** Carried so /notifications can mark a downstream tender: that page lists
+   * both tracks together, and the rows are otherwise indistinguishable. */
+  track: Track;
 }
 
 /** The reminder window: a milestone this close is something to act on now
@@ -163,7 +203,7 @@ export const REMINDER_DAYS = 3;
  * this value too. */
 export const DUE_SOON_DAYS = 14;
 
-export function computeDeadlines(tenders: Tender[], anchor: string, catalog?: MilestoneType[]): DeadlineRow[] {
+export function computeDeadlines(tenders: Tender[], anchor: string, catalog?: MilestoneCatalog): DeadlineRow[] {
   const rows: DeadlineRow[] = [];
   for (const t of tenders) {
     if (t.result) continue;
@@ -178,6 +218,7 @@ export function computeDeadlines(tenders: Tender[], anchor: string, catalog?: Mi
         milestoneLabel: nm.label,
         dateFormatted: formatDateID(nm.date) ?? "—",
         urgent: nm.diff <= REMINDER_DAYS,
+        track: t.track,
       });
     }
   }
@@ -198,7 +239,7 @@ export interface StalledRow {
 
 /** Active (no result yet) tenders with no future-dated milestone left to
  * track — likely stuck waiting on a customer decision. */
-export function computeStalled(tenders: Tender[], anchor: string, catalog?: MilestoneType[]): StalledRow[] {
+export function computeStalled(tenders: Tender[], anchor: string, catalog?: MilestoneCatalog): StalledRow[] {
   const rows: StalledRow[] = [];
   for (const t of tenders) {
     if (t.result) continue;

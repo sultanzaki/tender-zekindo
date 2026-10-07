@@ -11,7 +11,10 @@ import {
   type MilestoneType,
   type Tender,
   type TenderFilters,
+  type Track,
+  TRACK_LABELS,
 } from "@/lib/types";
+import { TrackBadge } from "./TrackBadge";
 import { dateTone, filterTenders, formatDateID, formatRupiah, sortTenders, type SortDirection, type SortKey } from "@/lib/tender-logic";
 import { ResultBadge } from "./ResultBadge";
 import shared from "./shared.module.css";
@@ -27,6 +30,7 @@ const DATE_TONE_CLASS = {
 
 /** Non-milestone columns that the Columns menu can toggle. */
 const FIELD_TOGGLES: { key: string; label: string }[] = [
+  { key: "track", label: "Track" },
   { key: "period", label: "Period" },
   { key: "oe", label: "OE (Rp)" },
   { key: "qty", label: "Qty" },
@@ -34,6 +38,9 @@ const FIELD_TOGGLES: { key: string; label: string }[] = [
 ];
 
 const FIELD_TOGGLE_DEFAULTS: Record<string, boolean> = {
+  // Visible by default: "which kind of tender is this" is not an optional extra,
+  // it changes which milestones the row has at all.
+  track: true,
   period: false,
   oe: false,
   qty: false,
@@ -66,12 +73,16 @@ export function TenderTableClient({
   milestoneTypes,
   anchor,
   isAdmin,
+  track,
 }: {
   tenders: Tender[];
   options: FilterOptions;
   milestoneTypes: MilestoneType[];
   anchor: string;
   isAdmin: boolean;
+  /** The track being shown. Carried into the export link so exporting cannot
+   * silently dump the other track's tenders into the spreadsheet. */
+  track: Track;
 }) {
   const router = useRouter();
   const [filters, setFilters] = useState<TenderFilters>(DEFAULT_FILTERS);
@@ -187,9 +198,10 @@ export function TenderTableClient({
     if (filters.customer !== "all") params.set("customer", filters.customer);
     if (filters.result !== "all") params.set("result", filters.result);
     if (filters.search) params.set("search", filters.search);
+    if (track !== "upstream") params.set("track", track);
     const qs = params.toString();
     return "/tenders/export" + (qs ? `?${qs}` : "");
-  }, [filters]);
+  }, [filters, track]);
 
   function toggleSort(key: SortKey) {
     setSort((s) => {
@@ -379,6 +391,11 @@ export function TenderTableClient({
                     </th>
                   )}
                   {sortableHeader("rowNo", "No")}
+                  {visibleCols.track && (
+                    <th className={styles.th} title="Upstream or downstream">
+                      Track
+                    </th>
+                  )}
                   {sortableHeader("area", "Area")}
                   {sortableHeader("tenderNo", "Tender No.")}
                   {sortableHeader("customer", "Customer")}
@@ -412,6 +429,15 @@ export function TenderTableClient({
                       </td>
                     )}
                     <td className={`${styles.td} ${styles.tdMuted}`}>{t.rowNo}</td>
+                    {visibleCols.track && (
+                      <td className={`${styles.td} ${styles.tdNoWrap}`}>
+                        {t.track === "downstream" ? (
+                          <TrackBadge track={t.track} />
+                        ) : (
+                          <span style={{ color: "var(--color-fg3)" }}>{TRACK_LABELS.upstream}</span>
+                        )}
+                      </td>
+                    )}
                     <td className={styles.td}>{t.area}</td>
                     <td className={`${styles.td} ${styles.tdNoWrap}`} style={{ color: "var(--color-fg2)" }}>
                       {t.tenderNo || "—"}

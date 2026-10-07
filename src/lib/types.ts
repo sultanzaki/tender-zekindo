@@ -39,6 +39,59 @@ export const MILESTONE_DEFS: { key: MilestoneKey; label: string }[] = [
   { key: "firstDelivery", label: "First Delivery" },
 ];
 
+/** The 7 milestones downstream ships with (migration 0009). Same rules as
+ * MILESTONE_DEFS: the seed for the `milestone_types` table and an offline
+ * fallback — not the runtime source, which is the database.
+ *
+ * The `ds` prefix is deliberate. Milestone dates live in the jsonb bag
+ * `tenders.milestones`, keyed by these strings: if both tracks were allowed to
+ * use the same key for different labels, renaming a milestone in one track
+ * would silently rewrite the meaning of dates in the other, with no error. */
+export const DOWNSTREAM_MILESTONE_DEFS: { key: string; label: string }[] = [
+  { key: "dsPendaftaran", label: "Pendaftaran" },
+  { key: "dsPrakualifikasi", label: "Prakualifikasi" },
+  { key: "dsPrebid", label: "Prebid" },
+  { key: "dsBidding", label: "Bidding" },
+  { key: "dsNegosiasi1", label: "Negosiasi 1" },
+  { key: "dsNegosiasi2", label: "Negosiasi 2" },
+  { key: "dsNegosiasi3", label: "Negosiasi 3" },
+];
+
+/** Upstream = the tenders this app shipped with. Downstream = the same flow
+ * with a different default milestone catalog (migration 0009). Columns,
+ * documents, reminders and export are identical between the two. */
+export type Track = "upstream" | "downstream";
+
+export const TRACKS: Track[] = ["upstream", "downstream"];
+
+export const TRACK_LABELS: Record<Track, string> = {
+  upstream: "Upstream",
+  downstream: "Downstream",
+};
+
+export function isTrack(value: unknown): value is Track {
+  return value === "upstream" || value === "downstream";
+}
+
+/** The `track` query parameter, narrowed. Anything unrecognised — a stale
+ * bookmark, a typo, a hand-edited URL — falls back to upstream rather than
+ * showing an empty list, which would look like a broken database. */
+export function trackFromParam(value: unknown): Track {
+  return value === "downstream" ? "downstream" : "upstream";
+}
+
+/** Next hands searchParams values as string | string[] | undefined; a plain
+ * string map is easier to carry across a link. */
+export function flatParams(
+  searchParams: Record<string, string | string[] | undefined>,
+): Record<string, string | undefined> {
+  const out: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(searchParams)) {
+    out[key] = Array.isArray(value) ? value[0] : value;
+  }
+  return out;
+}
+
 export const RESULT_ENUM = [
   "WIN",
   "LOSS PRICE",
@@ -70,6 +123,9 @@ export interface Profile {
 export interface Tender {
   id: string;
   rowNo: number;
+  /** Upstream (the flow the app shipped with) or downstream. Decides which
+   * milestone catalog supplies the default; nothing else differs. */
+  track: Track;
   period: string;
   area: string;
   tenderNo: string | null;
@@ -106,6 +162,9 @@ export interface Tender {
 export interface MilestoneType {
   id: string;
   key: string;
+  /** Which track's catalog this belongs to. The two are independent: adding,
+   * renaming or reordering in one never touches the other. */
+  track: Track;
   label: string;
   sortOrder: number;
   /** Starting visibility in the dense tender table (togglable per session). */
@@ -221,6 +280,10 @@ export const DEFAULT_FILTERS: TenderFilters = {
 
 /** Shape shared by the new-tender and edit-tender forms (before parsing). */
 export interface TenderFormValues {
+  /** Set at creation and never changed afterwards: the tender's milestone
+   * dates are keyed by that track's catalog, so switching track would silently
+   * orphan them. */
+  track: Track;
   area: string;
   tenderNo: string;
   customer: string;

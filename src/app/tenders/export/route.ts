@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth/dal";
 import { getAllTenders } from "@/lib/tenders";
 import { getMilestoneTypes } from "@/lib/milestones";
 import { filterTenders } from "@/lib/tender-logic";
+import { trackFromParam, TRACK_LABELS } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,7 @@ export async function GET(request: Request) {
   const isAdmin = ctx.profile.role === "admin";
 
   const { searchParams } = new URL(request.url);
+  const track = trackFromParam(searchParams.get("track"));
   const filters = {
     period: searchParams.get("period") ?? "all",
     area: searchParams.get("area") ?? "all",
@@ -25,8 +27,8 @@ export async function GET(request: Request) {
     search: searchParams.get("search") ?? "",
   };
 
-  const tenders = await getAllTenders();
-  const milestoneTypes = await getMilestoneTypes();
+  const tenders = await getAllTenders({ track });
+  const milestoneTypes = await getMilestoneTypes(track);
   const rows = filterTenders(tenders, filters);
 
   const workbook = new ExcelJS.Workbook();
@@ -37,6 +39,7 @@ export async function GET(request: Request) {
   // display; the underlying dates are still exported under their own column.
   sheet.columns = [
     { header: "No", key: "no", width: 6 },
+    { header: "Track", key: "track", width: 12 },
     { header: "Area", key: "area", width: 14 },
     { header: "Tender No.", key: "tenderNo", width: 16 },
     { header: "Customer", key: "customer", width: 30 },
@@ -60,6 +63,7 @@ export async function GET(request: Request) {
   rows.forEach((t) => {
     sheet.addRow({
       no: t.rowNo,
+      track: TRACK_LABELS[t.track],
       area: t.area,
       tenderNo: t.tenderNo,
       customer: t.customer,
