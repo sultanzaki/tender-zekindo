@@ -2,16 +2,16 @@
 // SVG fill/stroke attributes in recharts need concrete colors, not
 // var(--...) references, so we keep this one small mapping in sync by hand.
 export const CHART_COLORS = {
-  primary: "#2b8db8",
-  primaryDark: "#1a5f7a",
-  success: "#28a745",
-  error: "#d0021b",
-  warning: "#f5a623",
-  gray300: "#c8d6df",
-  gray400: "#a0b4bf",
-  gray500: "#6b8a96",
-  grid: "#e0e8ee",
-  axisText: "#888888",
-  fg1: "#111111",
-  fg2: "#444444",
+  primary: "#2563eb",       // blue-600
+  primaryDark: "#1d4ed8",   // blue-700
+  success: "#16a34a",       // green-600
+  error: "#dc2626",         // red-600
+  warning: "#d97706",       // amber-600
+  gray300: "#94a3b8",       // slate-400
+  gray400: "#64748b",       // slate-500
+  gray500: "#475569",       // slate-600
+  grid: "#e2e8f0",          // slate-200
+  axisText: "#94a3b8",      // slate-400
+  fg1: "#0f172a",           // slate-900
+  fg2: "#334155",           // slate-700
 };

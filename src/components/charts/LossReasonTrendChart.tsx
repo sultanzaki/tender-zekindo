@@ -13,8 +13,8 @@ import styles from "./charts.module.css";
 const LOSS_COLOR_HEX: Record<string, string> = {
   "Price Loss": CHART_COLORS.error,
   "Technical Loss": CHART_COLORS.warning,
-  "PQ Admin Loss": CHART_COLORS.gray500,
-  "Registration Loss": CHART_COLORS.gray400,
+  "PQ Admin Loss": "#0891b2",       // cyan-600
+  "Registration Loss": CHART_COLORS.gray500,
 };
 
 interface FlatRow {
