@@ -6,8 +6,10 @@ import {
   deleteDocumentFolder,
   deleteTenderFile,
   renameDocumentFolder,
-  uploadTenderFiles,
+  prepareFileUpload,
+  completeFileUpload,
   type FileTarget,
+  type UploadPrepItem,
 } from "@/lib/folder-actions";
 import type { DocumentFile, DocumentSection, DocumentTreeNode } from "@/lib/types";
 
@@ -18,8 +20,67 @@ function formatSize(bytes: number | null) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** One folder and everything under it. Recursion is done with a component
- * rather than a flattened list so the indentation always matches the nesting. */
+/* ── Upload progress bar ────────────────────────────────── */
+function UploadProgressBar({
+  phase,
+  pct,
+  currentFile,
+  totalBytes,
+  uploadedBytes,
+}: {
+  phase: string;
+  pct: number;
+  currentFile: string;
+  totalBytes: number;
+  uploadedBytes: number;
+}) {
+  const label =
+    phase === "preparing"
+      ? "Menyiapkan…"
+      : phase === "uploading"
+        ? `Mengupload ${currentFile}…`
+        : phase === "finalizing"
+          ? "Menyimpan…"
+          : phase === "done"
+            ? "Selesai ✓"
+            : "";
+
+  if (phase === "idle" || phase === "error") return null;
+
+  return (
+    <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 8, background: "#f1f5f9" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#334155", marginBottom: 4 }}>
+        <span>{label}</span>
+        <span>{Math.round(pct)}%</span>
+      </div>
+      <div
+        style={{
+          height: 8,
+          borderRadius: 4,
+          background: "#e2e8f0",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            height: "100%",
+            width: `${pct}%`,
+            borderRadius: 4,
+            background: phase === "done" ? "#16a34a" : "#2563eb",
+            transition: "width 0.3s ease",
+          }}
+        />
+      </div>
+      {totalBytes > 0 && (
+        <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+          {formatSize(uploadedBytes)} / {formatSize(totalBytes)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Folder branch ──────────────────────────────────────── */
 function FolderBranch({
   node,
   depth,
@@ -190,6 +251,7 @@ function FolderBranch({
   );
 }
 
+/* ── File row ───────────────────────────────────────────── */
 function FileRow({
   file,
   depth,
@@ -231,6 +293,24 @@ function FileRow({
   );
 }
 
+/* ── Upload progress state ──────────────────────────────── */
+interface UploadProgress {
+  phase: "idle" | "preparing" | "uploading" | "finalizing" | "done" | "error";
+  pct: number;
+  currentFile: string;
+  totalBytes: number;
+  uploadedBytes: number;
+}
+
+const IDLE_UPLOAD: UploadProgress = {
+  phase: "idle",
+  pct: 0,
+  currentFile: "",
+  totalBytes: 0,
+  uploadedBytes: 0,
+};
+
+/* ── Main explorer ──────────────────────────────────────── */
 export function DocumentExplorer({
   tenderId,
   sections,
@@ -245,9 +325,8 @@ export function DocumentExplorer({
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [addingRoot, setAddingRoot] = useState<string | null>(null);
   const [rootName, setRootName] = useState("");
+  const [upload, setUpload] = useState<UploadProgress>(IDLE_UPLOAD);
 
-  // Accepts any action result: some return { id } on success, and narrowing the
-  // signature per action here would just be noise.
   function run(fn: () => Promise<unknown>) {
     setError(null);
     startTransition(async () => {
@@ -263,19 +342,104 @@ export function DocumentExplorer({
     };
   }
 
-  function handleUpload(section: DocumentSection, files: FileList | null, folderId?: string) {
-    if (!files || !files.length) return;
-    const formData = new FormData();
-    for (const file of Array.from(files)) formData.append("files", file);
-    run(() => uploadTenderFiles(tenderId, { ...target(section), folderId: folderId ?? null }, formData));
+  function isBusy() {
+    return pending || upload.phase !== "idle";
   }
+
+  async function handleUpload(section: DocumentSection, rawFiles: FileList | null, folderId?: string) {
+    if (!rawFiles || !rawFiles.length) return;
+    setError(null);
+
+    const files = Array.from(rawFiles);
+    const totalBytes = files.reduce((s, f) => s + f.size, 0);
+    setUpload({
+      phase: "preparing",
+      pct: 0,
+      currentFile: files[0]?.name || "",
+      totalBytes,
+      uploadedBytes: 0,
+    });
+
+    // 1. Get signed upload URLs from server
+    const target_ = { ...target(section), folderId: folderId ?? null };
+    const prep = await prepareFileUpload(
+      tenderId,
+      target_,
+      files.map((f) => ({ name: f.name, size: f.size, type: f.type }))
+    );
+    if ("error" in prep) {
+      setError(prep.error!);
+      setUpload(IDLE_UPLOAD);
+      return;
+    }
+
+    // 2. Upload each file directly to Supabase via XHR
+    setUpload((u) => ({ ...u, phase: "uploading" }));
+    let uploadedBytes = 0;
+    const uploaded: { path: string; fileName: string; size: number; contentType: string | null }[] = [];
+
+    for (const item of prep.uploads) {
+      const file = files[item.index];
+      if (!file) continue;
+
+      setUpload((u) => ({ ...u, currentFile: item.fileName }));
+
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.upload.onprogress = (e) => {
+            if (!e.lengthComputable) return;
+            const fileLoaded = uploadedBytes + e.loaded;
+            const pct = (fileLoaded / totalBytes) * 100;
+            setUpload((u) => ({ ...u, pct, uploadedBytes: fileLoaded }));
+          };
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              uploadedBytes += file.size;
+              setUpload((u) => ({ ...u, uploadedBytes }));
+              uploaded.push({
+                path: item.path,
+                fileName: item.fileName,
+                size: file.size,
+                contentType: file.type || null,
+              });
+              resolve();
+            } else {
+              reject(new Error(`Upload gagal (HTTP ${xhr.status})`));
+            }
+          };
+          xhr.onerror = () => reject(new Error("Gagal terhubung ke storage."));
+          xhr.open("PUT", item.signedUrl);
+          xhr.setRequestHeader("Content-Type", item.contentType);
+          xhr.send(file);
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Upload gagal.");
+        setUpload(IDLE_UPLOAD);
+        return;
+      }
+    }
+
+    // 3. Register files in database
+    setUpload((u) => ({ ...u, phase: "finalizing", pct: 100 }));
+    const result = await completeFileUpload(tenderId, target_, uploaded);
+    if (result?.error) {
+      setError(result.error);
+      setUpload(IDLE_UPLOAD);
+      return;
+    }
+
+    // 4. Done
+    setUpload({ phase: "done", pct: 100, currentFile: "", totalBytes, uploadedBytes });
+    setTimeout(() => setUpload(IDLE_UPLOAD), 2500);
+  }
+
+  const busy = isBusy();
 
   return (
     <div>
       {sections.map((section) => {
         const count = section.rootFiles.length + section.folders.length;
-        // Milestone sections start collapsed when empty: there are a lot of them,
-        // and an empty tree each is just noise.
         const isCollapsed = collapsed[section.id] ?? (section.kind === "milestone" && count === 0);
 
         return (
@@ -303,7 +467,7 @@ export function DocumentExplorer({
                       type="file"
                       multiple
                       style={{ display: "none" }}
-                      disabled={pending}
+                      disabled={busy}
                       onChange={(e) => {
                         handleUpload(section, e.target.files);
                         e.target.value = "";
@@ -313,7 +477,7 @@ export function DocumentExplorer({
                   <button
                     type="button"
                     style={{ fontSize: 11.5 }}
-                    disabled={pending}
+                    disabled={busy}
                     onClick={() => {
                       setAddingRoot(section.id);
                       setRootName("");
@@ -346,7 +510,7 @@ export function DocumentExplorer({
                     <button
                       type="button"
                       style={{ fontSize: 12 }}
-                      disabled={pending || !rootName.trim()}
+                      disabled={busy || !rootName.trim()}
                       onClick={() => {
                         run(() => createDocumentFolder(tenderId, rootName.trim(), target(section)));
                         setAddingRoot(null);
@@ -363,7 +527,7 @@ export function DocumentExplorer({
                     file={file}
                     depth={1}
                     isAdmin={isAdmin}
-                    busy={pending}
+                    busy={busy}
                     onDelete={(id, name) => {
                       if (confirm(`Hapus "${name}"?`)) run(() => deleteTenderFile(id));
                     }}
@@ -376,7 +540,7 @@ export function DocumentExplorer({
                     node={node}
                     depth={0}
                     isAdmin={isAdmin}
-                    busy={pending}
+                    busy={busy}
                     onUpload={(folderId, files) => handleUpload(section, files, folderId)}
                     onNewFolder={(parentId, name) => run(() => createDocumentFolder(tenderId, name, { folderId: parentId }))}
                     onRename={(folderId, name) => run(() => renameDocumentFolder(folderId, name))}
@@ -400,13 +564,16 @@ export function DocumentExplorer({
         );
       })}
 
+      <UploadProgressBar
+        phase={upload.phase}
+        pct={upload.pct}
+        currentFile={upload.currentFile}
+        totalBytes={upload.totalBytes}
+        uploadedBytes={upload.uploadedBytes}
+      />
+
       {error && (
         <div style={{ marginTop: 8, fontSize: 12.5, color: "var(--zk-error, #b91c1c)" }}>{error}</div>
-      )}
-      {pending && !error && (
-        <div style={{ marginTop: 8, fontSize: 12.5, color: "var(--zk-gray-500, #64748b)" }}>
-          ⏳ Mengupload…
-        </div>
       )}
     </div>
   );
