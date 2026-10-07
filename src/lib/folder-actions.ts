@@ -136,26 +136,24 @@ export async function uploadTenderFiles(
 
   const owner = folderId ?? milestoneKey ?? documentTypeId ?? "root";
 
-  // Uploaded together: they are independent, and one at a time is what made the
-  // old page slow. If ANY of them fails, the ones that already landed are
-  // removed again — a half-uploaded batch is worse than none, because the user
-  // cannot tell which half arrived.
-  const paths = files.map((file, i) => objectPath(tenderId, owner, i, file.name));
-  const results = await Promise.all(
-    files.map(async (file, i) => {
-      const buffer = new Uint8Array(await file.arrayBuffer());
-      const { error } = await supabaseServer()
-        .storage.from(DOCUMENT_BUCKET)
-        .upload(paths[i], buffer, { contentType: file.type || "application/octet-stream" });
-      return error;
-    })
-  );
-
-  const failedAt = results.findIndex((e) => e);
-  if (failedAt !== -1) {
-    const landed = paths.filter((_, i) => !results[i]);
-    if (landed.length) await supabaseServer().storage.from(DOCUMENT_BUCKET).remove(landed);
-    return { error: results[failedAt]!.message };
+  // Sequential upload (one at a time) to avoid Supabase free-plan rate limits.
+  // See https://supabase.com/docs/guides/storage/uploads#file-limits
+  // The parallel Promise.all approach hit rate limits with 2+ files.
+  const paths: string[] = [];
+  for (let i = 0; i < files.length; i++) {
+    const path = objectPath(tenderId, owner, i, files[i].name);
+    paths.push(path);
+    const buffer = new Uint8Array(await files[i].arrayBuffer());
+    const { error } = await supabaseServer()
+      .storage.from(DOCUMENT_BUCKET)
+      .upload(path, buffer, { contentType: files[i].type || "application/octet-stream" });
+    if (error) {
+      // Batches that landed before this failure are removed again.
+      const landed = paths.filter((_, j) => j < i);
+      if (landed.length)
+        await supabaseServer().storage.from(DOCUMENT_BUCKET).remove(landed);
+      return { error: error.message };
+    }
   }
 
   const { error } = await supabaseServer()
