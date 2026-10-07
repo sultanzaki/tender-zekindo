@@ -181,6 +181,109 @@ export async function uploadTenderFiles(
   revalidatePath(`/tenders/${tenderId}`);
 }
 
+/** One prepared upload slot: a signed URL the client uses to upload direct to
+ * Supabase Storage (bypassing Vercel's 4.5 MB function body limit). */
+export interface UploadPrepItem {
+  index: number;
+  path: string;
+  signedUrl: string;
+  token: string;
+  fileName: string;
+  fileSize: number;
+  contentType: string;
+}
+
+/** Generates signed upload URLs so the client can PUT files directly to
+ * Supabase Storage. File data never passes through the server this way — no
+ * Vercel body limit, no function timeout for large files. */
+export async function prepareFileUpload(
+  tenderId: string,
+  target: FileTarget,
+  files: { name: string; size: number; type: string }[]
+): Promise<{ uploads: UploadPrepItem[] } | ActionError> {
+  const ctx = await requireAdmin();
+
+  if (!files.length) return { error: "Pilih minimal satu file." };
+
+  const folderId: string | null = target.folderId ?? null;
+  let milestoneKey: string | null = target.milestoneKey ?? null;
+  let documentTypeId: string | null = target.documentTypeId ?? null;
+
+  if (folderId) {
+    const resolved = await resolveFolder(tenderId, folderId);
+    if (resolved.error || !resolved.folder) return { error: resolved.error ?? "Folder tidak ditemukan." };
+    milestoneKey = resolved.folder.milestone_key;
+    documentTypeId = resolved.folder.document_type_id;
+  } else if (!milestoneKey && !documentTypeId) {
+    return { error: "File harus punya induk: sebuah milestone atau satu item checklist." };
+  }
+
+  const owner = folderId ?? milestoneKey ?? documentTypeId ?? "root";
+
+  const uploads = await Promise.all(
+    files.map(async (file, i) => {
+      const path = objectPath(tenderId, owner, i, file.name);
+      const { data, error } = await supabaseServer()
+        .storage.from(DOCUMENT_BUCKET)
+        .createSignedUploadUrl(path, { upsert: false });
+      if (error) throw new Error(error.message);
+      return {
+        index: i,
+        path,
+        signedUrl: data.signedUrl,
+        token: data.token,
+        fileName: file.name,
+        fileSize: file.size,
+        contentType: file.type || "application/octet-stream",
+      };
+    })
+  );
+
+  return { uploads };
+}
+
+/** Registers already-uploaded files in the tender_files database row.
+ * Call AFTER the client has PUT each file directly to its signed URL. */
+export async function completeFileUpload(
+  tenderId: string,
+  target: FileTarget,
+  uploaded: { path: string; fileName: string; size: number; contentType: string | null }[]
+): Promise<ActionError | undefined> {
+  const ctx = await requireAdmin();
+
+  const folderId: string | null = target.folderId ?? null;
+  let milestoneKey: string | null = target.milestoneKey ?? null;
+  let documentTypeId: string | null = target.documentTypeId ?? null;
+
+  if (folderId) {
+    const resolved = await resolveFolder(tenderId, folderId);
+    if (resolved.error || !resolved.folder) return { error: resolved.error ?? "Folder tidak ditemukan." };
+    milestoneKey = resolved.folder.milestone_key;
+    documentTypeId = resolved.folder.document_type_id;
+  } else if (!milestoneKey && !documentTypeId) {
+    return { error: "File harus punya induk: sebuah milestone atau satu item checklist." };
+  }
+
+  const { error } = await supabaseServer()
+    .from("tender_files")
+    .insert(
+      uploaded.map((f) => ({
+        tender_id: tenderId,
+        folder_id: folderId,
+        milestone_key: folderId ? null : milestoneKey,
+        document_type_id: folderId ? null : documentTypeId,
+        file_path: f.path,
+        file_name: f.fileName,
+        size_bytes: f.size,
+        content_type: f.contentType || null,
+        uploaded_by: ctx.userId,
+      }))
+    );
+  if (error) return { error: error.message };
+
+  revalidatePath(`/tenders/${tenderId}`);
+}
+
 export async function deleteTenderFile(fileId: string): Promise<ActionError | undefined> {
   await requireAdmin();
 
