@@ -19,18 +19,13 @@ export function TrackComparisonChart({ data }: { data: TrackComparisonRow[] }) {
   }
 
   return (
-    <div style={{ display: "flex", gap: 12, padding: "8px 0" }}>
+    <div style={{ display: "flex", gap: 16, padding: "4px 20px 20px" }}>
       {data.map((row) => {
         const meta = META[row.track];
         return (
           <div
             key={row.track}
-            style={{
-              flex: 1,
-              border: "1px solid #e2e8f0",
-              borderRadius: 10,
-              padding: "12px 14px",
-            }}
+            style={{ flex: 1 }}
           >
             {/* Track label with dot */}
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
@@ -48,7 +43,7 @@ export function TrackComparisonChart({ data }: { data: TrackComparisonRow[] }) {
             </div>
 
             {/* Metrics */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <MetricRow label="Tenders" value={`${row.count}`} />
               <MetricRow label="Pipeline Value" value={formatCompactRupiah(row.pipelineValue)} />
               <MetricRow label="Win Value" value={formatCompactRupiah(row.winValue)} />
