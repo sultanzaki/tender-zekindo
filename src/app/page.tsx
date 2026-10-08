@@ -9,6 +9,8 @@ import {
   totalPipelineValue,
   totalWinValue,
   runningCount,
+  statusBreakdown,
+  trackComparison,
 } from "@/lib/analytics";
 import { KpiCards } from "@/components/charts/KpiCards";
 import { WinRateTrendChart } from "@/components/charts/WinRateTrendChart";
@@ -16,6 +18,8 @@ import { OutcomeVolumeChart } from "@/components/charts/OutcomeVolumeChart";
 import { LossReasonTrendChart } from "@/components/charts/LossReasonTrendChart";
 import { GroupWinRateChart } from "@/components/charts/GroupWinRateChart";
 import { PipelineValueChart } from "@/components/charts/PipelineValueChart";
+import { TenderStatusDonut } from "@/components/charts/TenderStatusDonut";
+import { TrackComparisonChart } from "@/components/charts/TrackComparisonChart";
 import { AnalyticsFilters } from "@/components/AnalyticsFilters";
 import { TRACK_LABELS, type Track } from "@/lib/types";
 import shared from "@/components/shared.module.css";
@@ -65,6 +69,8 @@ export default async function AnalyticsDashboardPage({
   const winRateByArea = winRateByGroup(tenders, (t) => t.area);
   const winRateByEntitas = winRateByGroup(tenders, (t) => t.entitas);
   const pipelineByArea = pipelineValueByGroup(tenders, (t) => t.area);
+  const statusData = statusBreakdown(tenders);
+  const trackData = trackComparison(tenders);
 
   const overall = overallWinRate(tenders);
   const kpiData = {
@@ -130,6 +136,24 @@ export default async function AnalyticsDashboardPage({
           <span className={shared.cardMeta}>Share of losses by reason, per period</span>
         </div>
         <LossReasonTrendChart data={lossRows} />
+      </div>
+
+      <div className={chartStyles.grid2} style={{ marginBottom: 20 }}>
+        <div className={shared.card} style={{ overflow: "hidden" }}>
+          <div className={shared.cardHeader}>
+            <h2 className={shared.cardTitle}>Tender Status</h2>
+            <span className={shared.cardMeta}>Breakdown of all tenders by outcome</span>
+          </div>
+          <TenderStatusDonut data={statusData} />
+        </div>
+
+        <div className={shared.card} style={{ overflow: "hidden" }}>
+          <div className={shared.cardHeader}>
+            <h2 className={shared.cardTitle}>Track Comparison</h2>
+            <span className={shared.cardMeta}>Upstream vs downstream</span>
+          </div>
+          <TrackComparisonChart data={trackData} />
+        </div>
       </div>
 
       <div className={chartStyles.grid2} style={{ marginBottom: 20 }}>

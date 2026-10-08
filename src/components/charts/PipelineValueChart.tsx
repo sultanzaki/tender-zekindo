@@ -1,11 +1,11 @@
 "use client";
 
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, LabelList } from "recharts";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, LabelList, Cell } from "recharts";
 import type { TooltipContentProps } from "recharts";
 import type { GroupValueRow } from "@/lib/analytics";
 import { formatCompactRupiah } from "@/lib/analytics";
 import { formatRupiah } from "@/lib/tender-logic";
-import { CHART_COLORS } from "./chartColors";
+import { CATEGORICAL, CHART_COLORS } from "./chartColors";
 import styles from "./charts.module.css";
 
 function CustomTooltip({ active, payload }: TooltipContentProps) {
@@ -61,6 +61,9 @@ export function PipelineValueChart({ data, emptyMessage }: { data: GroupValueRow
           />
           <Tooltip content={CustomTooltip} cursor={{ fill: CHART_COLORS.grid, opacity: 0.4 }} />
           <Bar dataKey="value" fill={CHART_COLORS.primaryDark} maxBarSize={22} radius={[0, 4, 4, 0]}>
+            {top.map((entry, idx) => (
+              <Cell key={entry.group} fill={CATEGORICAL[idx % CATEGORICAL.length]} />
+            ))}
             <LabelList
               dataKey="value"
               position="right"

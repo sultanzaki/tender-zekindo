@@ -1,9 +1,9 @@
 "use client";
 
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, LabelList } from "recharts";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, LabelList, Cell } from "recharts";
 import type { TooltipContentProps } from "recharts";
 import type { GroupWinRateRow } from "@/lib/analytics";
-import { CHART_COLORS } from "./chartColors";
+import { CATEGORICAL, CHART_COLORS } from "./chartColors";
 import styles from "./charts.module.css";
 
 function CustomTooltip({ active, payload }: TooltipContentProps) {
@@ -57,6 +57,9 @@ export function GroupWinRateChart({ data, emptyMessage }: { data: GroupWinRateRo
           />
           <Tooltip content={CustomTooltip} cursor={{ fill: CHART_COLORS.grid, opacity: 0.4 }} />
           <Bar dataKey="winRatePct" fill={CHART_COLORS.primary} maxBarSize={22} radius={[0, 4, 4, 0]}>
+            {data.map((entry, idx) => (
+              <Cell key={entry.group} fill={CATEGORICAL[idx % CATEGORICAL.length]} />
+            ))}
             <LabelList
               dataKey="winRatePct"
               position="right"
