@@ -4,7 +4,7 @@ import type { TrackComparisonRow } from "@/lib/analytics";
 import { formatCompactRupiah } from "@/lib/analytics";
 import { CHART_COLORS } from "./chartColors";
 
-const TRACK_META: Record<string, { label: string; color: string }> = {
+const META: Record<string, { label: string; color: string }> = {
   upstream: { label: "Upstream", color: CHART_COLORS.primary },
   downstream: { label: "Downstream", color: CHART_COLORS.success },
 };
@@ -18,128 +18,61 @@ export function TrackComparisonChart({ data }: { data: TrackComparisonRow[] }) {
     );
   }
 
-  const maxCount = Math.max(...data.map((d) => d.count), 1);
-  const maxPv = Math.max(...data.map((d) => d.pipelineValue), 1);
-  const maxWv = Math.max(...data.map((d) => d.winValue), 1);
-
   return (
-    <div style={{ padding: "12px 0", display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* Metric: Tender Count */}
-      <div>
-        <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4, fontWeight: 500 }}>TENDER COUNT</div>
-        {data.map((row) => {
-          const meta = TRACK_META[row.track];
-          return (
-            <div key={row.track} style={{ marginBottom: 6 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 2 }}>
-                <span style={{ color: "#475569" }}>{meta?.label ?? row.track}</span>
-                <span style={{ fontWeight: 600, color: "#0f172a" }}>{row.count}</span>
-              </div>
-              <div
+    <div style={{ display: "flex", gap: 12, padding: "8px 0" }}>
+      {data.map((row) => {
+        const meta = META[row.track];
+        return (
+          <div
+            key={row.track}
+            style={{
+              flex: 1,
+              border: "1px solid #e2e8f0",
+              borderRadius: 10,
+              padding: "12px 14px",
+            }}
+          >
+            {/* Track label with dot */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+              <span
                 style={{
-                  height: 6,
-                  borderRadius: 4,
-                  background: "#e2e8f0",
-                  overflow: "hidden",
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
+                  background: meta?.color ?? "#94a3b8",
                 }}
-              >
-                <div
-                  style={{
-                    height: "100%",
-                    width: `${(row.count / maxCount) * 100}%`,
-                    borderRadius: 4,
-                    background: meta?.color ?? "#94a3b8",
-                  }}
-                />
+              />
+              <span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>
+                {meta?.label ?? row.track}
+              </span>
+            </div>
+
+            {/* Metrics */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              <MetricRow label="Tenders" value={`${row.count}`} />
+              <MetricRow label="Pipeline Value" value={formatCompactRupiah(row.pipelineValue)} />
+              <MetricRow label="Win Value" value={formatCompactRupiah(row.winValue)} />
+            </div>
+
+            {/* Win rate — large number */}
+            <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #e2e8f0" }}>
+              <div style={{ fontSize: 11, color: "#64748b", marginBottom: 2 }}>Win Rate</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: meta?.color ?? "#0f172a" }}>
+                {row.winRate !== null ? `${row.winRate}%` : "—"}
               </div>
             </div>
-          );
-        })}
-      </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
-      {/* Metric: Pipeline Value */}
-      <div>
-        <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4, fontWeight: 500 }}>PIPELINE VALUE</div>
-        {data.map((row) => {
-          const meta = TRACK_META[row.track];
-          return (
-            <div key={row.track} style={{ marginBottom: 6 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 2 }}>
-                <span style={{ color: "#475569" }}>{meta?.label ?? row.track}</span>
-                <span style={{ fontWeight: 600, color: "#0f172a" }}>{formatCompactRupiah(row.pipelineValue)}</span>
-              </div>
-              <div
-                style={{
-                  height: 6,
-                  borderRadius: 4,
-                  background: "#e2e8f0",
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  style={{
-                    height: "100%",
-                    width: `${(row.pipelineValue / maxPv) * 100}%`,
-                    borderRadius: 4,
-                    background: meta?.color ?? "#94a3b8",
-                  }}
-                />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Metric: Win Value */}
-      <div>
-        <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4, fontWeight: 500 }}>WIN VALUE</div>
-        {data.map((row) => {
-          const meta = TRACK_META[row.track];
-          return (
-            <div key={row.track} style={{ marginBottom: 6 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 2 }}>
-                <span style={{ color: "#475569" }}>{meta?.label ?? row.track}</span>
-                <span style={{ fontWeight: 600, color: "#0f172a" }}>{formatCompactRupiah(row.winValue)}</span>
-              </div>
-              <div
-                style={{
-                  height: 6,
-                  borderRadius: 4,
-                  background: "#e2e8f0",
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  style={{
-                    height: "100%",
-                    width: `${(row.winValue / maxWv) * 100}%`,
-                    borderRadius: 4,
-                    background: meta?.color ?? "#94a3b8",
-                  }}
-                />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Win Rate summary */}
-      <div>
-        <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4, fontWeight: 500 }}>WIN RATE</div>
-        <div style={{ display: "flex", gap: 20 }}>
-          {data.map((row) => {
-            const meta = TRACK_META[row.track];
-            return (
-              <div key={row.track} style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, color: "#475569", marginBottom: 2 }}>{meta?.label ?? row.track}</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: meta?.color ?? "#0f172a" }}>
-                  {row.winRate !== null ? `${row.winRate}%` : "—"}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+function MetricRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12 }}>
+      <span style={{ color: "#64748b" }}>{label}</span>
+      <span style={{ fontWeight: 500, color: "#0f172a" }}>{value}</span>
     </div>
   );
 }
