@@ -47,9 +47,10 @@ export function TenderStatusDonut({ data }: { data: StatusBreakdown[] }) {
             cx="50%"
             cy="50%"
             innerRadius={50}
-            outerRadius={80}
-            paddingAngle={2}
-            stroke="none"
+            outerRadius={82}
+            paddingAngle={3}
+            stroke="#fff"
+            strokeWidth={2}
           >
             {data.map((entry) => (
               <Cell key={entry.key} fill={STATUS_COLORS[entry.key] ?? "#94a3b8"} />
@@ -71,10 +72,12 @@ export function TenderStatusDonut({ data }: { data: StatusBreakdown[] }) {
                 flexShrink: 0,
               }}
             />
-            <span style={{ flex: 1, color: "#475569" }}>{entry.label}</span>
-            <span style={{ fontWeight: 500, color: "#0f172a" }}>{entry.count}</span>
+            <span style={{ color: "#475569", minWidth: 70 }}>{entry.label}</span>
+            <span style={{ fontWeight: 600, color: "#0f172a", minWidth: 30, textAlign: "right" }}>
+              {entry.count}
+            </span>
             <span style={{ color: "#94a3b8", fontSize: 11 }}>
-              ({Math.round((entry.count / total) * 100)}%)
+              {Math.round((entry.count / total) * 100)}%
             </span>
           </div>
         ))}
