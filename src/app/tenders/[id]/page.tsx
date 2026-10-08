@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireUser } from "@/lib/auth/dal";
+import { getAuthContext } from "@/lib/auth/dal";
 import { restoreTenderForm } from "@/lib/actions";
 import { getTenderById } from "@/lib/tenders";
 import { getTenderDocuments } from "@/lib/documents";
@@ -40,8 +40,8 @@ const DATE_COLOR = {
 };
 
 export default async function TenderDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const ctx = await requireUser();
-  const isAdmin = ctx.profile.role === "admin";
+  const ctx = await getAuthContext();
+  const isAdmin = ctx?.profile.role === "admin";
 
   const { id } = await params;
   const tender = await getTenderById(id);

@@ -18,7 +18,7 @@ import { SESSION_COOKIE_NAME } from "@/lib/auth/sessionCookie";
 // visitor from /login straight back to a protected page, which redirects
 // straight back to /login, forever. src/app/login/page.tsx does that
 // redirect instead, using the real DB-backed getAuthContext() check.
-const PUBLIC_PREFIXES = ["/login"];
+const PUBLIC_PREFIXES = ["/login", "/", "/tenders", "/notifications"];
 
 export function proxy(request: NextRequest) {
   const hasSessionCookie = !!request.cookies.get(SESSION_COOKIE_NAME)?.value;
