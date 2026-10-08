@@ -162,6 +162,79 @@ export function totalWinValue(tenders: Tender[]): number {
     .reduce((sum, t) => sum + (t.nilaiPenawaran ?? 0), 0);
 }
 
+/* ── Status breakdown ───────────────────────────────────── */
+
+export interface StatusBreakdown {
+  key: string;
+  label: string;
+  count: number;
+}
+
+/** Breakdown of all tenders by their outcome status. */
+export function statusBreakdown(tenders: Tender[]): StatusBreakdown[] {
+  let running = 0, win = 0, loss = 0, canceled = 0, withdrawn = 0;
+  for (const t of tenders) {
+    if (!t.result) { running++; continue; }
+    if (t.result === "WIN") { win++; continue; }
+    if (t.result === "CANCELED") { canceled++; continue; }
+    if (t.result === "WITHDRAW") { withdrawn++; continue; }
+    loss++;
+  }
+  return [
+    { key: "running", label: "Running", count: running },
+    { key: "win", label: "Win", count: win },
+    { key: "loss", label: "Loss", count: loss },
+    { key: "canceled", label: "Canceled", count: canceled },
+    { key: "withdrawn", label: "Withdrawn", count: withdrawn },
+  ].filter((s) => s.count > 0);
+}
+
+/* ── Track comparison ────────────────────────────────────── */
+
+export interface TrackComparisonRow {
+  track: string;
+  label: string;
+  count: number;
+  pipelineValue: number;
+  winValue: number;
+  winRate: number | null;
+}
+
+/** Metrics side-by-side for upstream vs downstream. */
+export function trackComparison(tenders: Tender[]): TrackComparisonRow[] {
+  const map = new Map<string, { count: number; pv: number; wv: number; win: number; loss: number }>();
+  for (const t of tenders) {
+    const tr = t.track || "upstream";
+    let e = map.get(tr);
+    if (!e) {
+      e = { count: 0, pv: 0, wv: 0, win: 0, loss: 0 };
+      map.set(tr, e);
+    }
+    e.count++;
+    e.pv += t.oe ?? 0;
+    if (t.result === "WIN") {
+      e.win++;
+      e.wv += t.nilaiPenawaran ?? 0;
+    } else if (t.result && t.result !== "CANCELED" && t.result !== "WITHDRAW") {
+      e.loss++;
+    }
+  }
+  return ["upstream", "downstream"]
+    .filter((tr) => map.has(tr))
+    .map((tr) => {
+      const e = map.get(tr)!;
+      const decided = e.win + e.loss;
+      return {
+        track: tr,
+        label: tr === "upstream" ? "Upstream" : "Downstream",
+        count: e.count,
+        pipelineValue: e.pv,
+        winValue: e.wv,
+        winRate: decided ? Math.round((e.win / decided) * 100) : null,
+      };
+    });
+}
+
 export function runningCount(tenders: Tender[]): number {
   return tenders.filter((t) => !t.result).length;
 }

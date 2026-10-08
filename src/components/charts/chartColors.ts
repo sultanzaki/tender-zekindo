@@ -14,4 +14,27 @@ export const CHART_COLORS = {
   axisText: "#94a3b8",      // slate-400
   fg1: "#0f172a",           // slate-900
   fg2: "#334155",           // slate-700
+} as const;
+
+/** Categorical palette for up to 8 distinct groups (areas, entities, etc.).
+ * Every hue is spaced across the colour wheel for maximum distinguishability
+ * in both light and dark modes. */
+export const CATEGORICAL = [
+  "#2563eb",  // blue-600
+  "#059669",  // emerald-600
+  "#d97706",  // amber-600
+  "#7c3aed",  // violet-600
+  "#0891b2",  // cyan-600
+  "#db2777",  // pink-600
+  "#65a30d",  // lime-600
+  "#dc2626",  // red-600
+] as const;
+
+/** Semantic status colours used by the donut / outcome charts. */
+export const STATUS_COLORS: Record<string, string> = {
+  running: CHART_COLORS.primary,
+  win: CHART_COLORS.success,
+  loss: CHART_COLORS.error,
+  canceled: CHART_COLORS.warning,
+  withdrawn: CHART_COLORS.gray400,
 };
