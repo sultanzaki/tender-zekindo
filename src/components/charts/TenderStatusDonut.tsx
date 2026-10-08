@@ -37,7 +37,7 @@ export function TenderStatusDonut({ data }: { data: StatusBreakdown[] }) {
   }
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "4px 20px 20px" }}>
       <ResponsiveContainer width="55%" height={200}>
         <PieChart>
           <Pie
