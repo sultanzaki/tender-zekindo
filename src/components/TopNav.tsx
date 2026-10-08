@@ -64,10 +64,11 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
   // synchronously in an effect body causes a cascading render (react-hooks/
   // set-state-in-effect), and closing on click is the actual user intent.
 
-  if (pathname === "/login") return null;
-  if (!profile) return null;
+  if (pathname === "/login") {
+    return null;
+  }
 
-  const isAdmin = profile.role === "admin";
+  const isAdmin = profile?.role === "admin";
 
   return (
     <header className={styles.bar}>
@@ -94,7 +95,7 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
       </div>
 
       <div className={styles.right}>
-        {isAdmin && (
+        {profile && isAdmin && (
           <Suspense
             fallback={
               <Link href="/tenders/new" className={styles.newButton}>
@@ -126,7 +127,8 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
           )}
         </Link>
 
-        <div className={styles.userWrap} ref={menuRef}>
+        {profile ? (
+          <div className={styles.userWrap} ref={menuRef}>
           <button
             type="button"
             className={`${styles.userButton} ${menuOpen ? styles.userButtonOpen : ""}`}
@@ -204,6 +206,15 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
             </div>
           )}
         </div>
+      ) : (
+        <Link
+          href="/login"
+          className={styles.userButton}
+          style={{ textDecoration: "none", fontSize: 13 }}
+        >
+          Sign in
+        </Link>
+      )}
       </div>
     </header>
   );

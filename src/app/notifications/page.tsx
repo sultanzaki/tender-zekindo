@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { requireUser } from "@/lib/auth/dal";
 import { getAllTenders } from "@/lib/tenders";
 import { getMilestoneCatalog } from "@/lib/milestones";
 import { computeDeadlines, computeStalled, formatDateID, todayISO, REMINDER_DAYS } from "@/lib/tender-logic";
@@ -10,7 +9,6 @@ import styles from "./notifications.module.css";
 export const dynamic = "force-dynamic";
 
 export default async function NotificationsPage() {
-  await requireUser();
   // Both tracks at once: this page lists every tender, and resolving a
   // downstream tender against the upstream catalog would show it with no
   // milestones — and therefore no reminder — without any error at all.

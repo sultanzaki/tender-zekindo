@@ -36,13 +36,6 @@ export function KpiCards({ data }: { data: KpiData }) {
           {data.winCount} won of {data.decidedCount} decided
         </div>
       </div>
-      <div className={styles.kpiCard}>
-        <div className={styles.kpiLabel}>Decided Tenders</div>
-        <div className={styles.kpiValue}>{data.decidedCount}</div>
-        <div className={styles.kpiCaption}>
-          {data.winCount} win &middot; {data.lossCount} loss
-        </div>
-      </div>
     </div>
   );
 }

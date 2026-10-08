@@ -1,4 +1,3 @@
-import { requireUser } from "@/lib/auth/dal";
 import { getAllTenders, getFilterOptions } from "@/lib/tenders";
 import {
   ascendingPeriods,
@@ -34,9 +33,7 @@ export default async function AnalyticsDashboardPage({
 }: {
   searchParams: Promise<{ area?: string; period?: string; track?: string }>;
 }) {
-  await requireUser();
   const params = await searchParams;
-
   // The default here differs from the tender list on purpose: this is an
   // overview, so it starts on BOTH tracks and you narrow it yourself. A stale
   // bookmark naming a track we do not recognise falls back to both rather than
