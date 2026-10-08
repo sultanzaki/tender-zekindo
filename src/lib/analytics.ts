@@ -155,6 +155,13 @@ export function totalPipelineValue(tenders: Tender[]): number {
   return tenders.filter((t) => !t.result).reduce((sum, t) => sum + (t.oe ?? 0), 0);
 }
 
+/** Total nilai_penawaran (bid value) for WIN tenders. */
+export function totalWinValue(tenders: Tender[]): number {
+  return tenders
+    .filter((t) => t.result === "WIN")
+    .reduce((sum, t) => sum + (t.nilaiPenawaran ?? 0), 0);
+}
+
 export function runningCount(tenders: Tender[]): number {
   return tenders.filter((t) => !t.result).length;
 }
