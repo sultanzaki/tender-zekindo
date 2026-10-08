@@ -8,6 +8,7 @@ import {
   pipelineValueByGroup,
   overallWinRate,
   totalPipelineValue,
+  totalWinValue,
   runningCount,
 } from "@/lib/analytics";
 import { KpiCards } from "@/components/charts/KpiCards";
@@ -71,6 +72,7 @@ export default async function AnalyticsDashboardPage({
   const overall = overallWinRate(tenders);
   const kpiData = {
     pipelineValue: totalPipelineValue(tenders),
+    winValue: totalWinValue(tenders),
     runningCount: runningCount(tenders),
     winRatePct: overall.pct,
     winCount: overall.win,
