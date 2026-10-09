@@ -117,3 +117,18 @@ button {
   background: var(--zk-gray-300);
   border-radius: 6px;
 }
+
+/* ── Mobile input ergonomics ────────────────────────────────────────────
+ * iOS Safari auto-zooms into any field whose font-size is below 16px. The
+ * design system sizes form controls at 12.5–13px, so on touch screens we bump
+ * the effective size to 16px to stop the viewport jumping on focus, and give
+ * tap targets a little more height. The !important is deliberate: several
+ * controls set font-size inline, and this is the one override that must win. */
+
+@media (max-width: 600px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}

@@ -4,7 +4,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import type { TooltipContentProps } from "recharts";
 import { STATUS_COLORS } from "./chartColors";
 import type { StatusBreakdown } from "@/lib/analytics";
-import { formatCompactRupiah } from "@/lib/analytics";
+import styles from "./charts.module.css";
 
 function DonutTooltip(props: TooltipContentProps) {
   if (!props.active || !props.payload?.length) return null;
@@ -37,28 +37,30 @@ export function TenderStatusDonut({ data }: { data: StatusBreakdown[] }) {
   }
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "4px 20px 20px" }}>
-      <ResponsiveContainer width="55%" height={200}>
-        <PieChart>
-          <Pie
-            data={data}
-            dataKey="count"
-            nameKey="label"
-            cx="50%"
-            cy="50%"
-            innerRadius={50}
-            outerRadius={82}
-            paddingAngle={3}
-            stroke="#fff"
-            strokeWidth={2}
-          >
-            {data.map((entry) => (
-              <Cell key={entry.key} fill={STATUS_COLORS[entry.key] ?? "#94a3b8"} />
-            ))}
-          </Pie>
-          <Tooltip content={DonutTooltip} />
-        </PieChart>
-      </ResponsiveContainer>
+    <div className={styles.donutRow}>
+      <div className={styles.donutChart}>
+        <ResponsiveContainer width="100%" height={200}>
+          <PieChart>
+            <Pie
+              data={data}
+              dataKey="count"
+              nameKey="label"
+              cx="50%"
+              cy="50%"
+              innerRadius={50}
+              outerRadius={82}
+              paddingAngle={3}
+              stroke="#fff"
+              strokeWidth={2}
+            >
+              {data.map((entry) => (
+                <Cell key={entry.key} fill={STATUS_COLORS[entry.key] ?? "#94a3b8"} />
+              ))}
+            </Pie>
+            <Tooltip content={DonutTooltip} />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
         {data.map((entry) => (

@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { logout } from "@/lib/auth/actions";
 import type { Profile } from "@/lib/types";
 import styles from "./TopNav.module.css";
@@ -43,12 +43,6 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
   const [menuOpen, setMenuOpen] = useState(false);
   const [hamburgerOpen, setHamburgerOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const hamburgerRef = useRef<HTMLDivElement>(null);
-
-  function closeAll() {
-    setMenuOpen(false);
-    setHamburgerOpen(false);
-  }
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -81,7 +75,7 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
     <header className={styles.bar}>
       <div className={styles.left}>
         <Link href="/" className={styles.brand}>
-          <Image src="/logo.png" alt="Zekindo" height={24} width={100} style={{ height: 24, width: "auto" }} priority />
+          <Image src="/logo.png" alt="Zekindo" width={72} height={24} priority />
           <span className={styles.brandTitle}>Tender Management</span>
         </Link>
         <nav className={styles.tabs} aria-label="Main">
