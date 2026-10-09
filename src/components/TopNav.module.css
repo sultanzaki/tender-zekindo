@@ -429,7 +429,8 @@
   }
   .left {
     gap: 14px;
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     order: 1;
   }
   .right {
