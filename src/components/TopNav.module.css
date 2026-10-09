@@ -358,6 +358,9 @@
   .tabs {
     display: none;
   }
+  .right > *:not(.hamburger) {
+    display: none;
+  }
 }
 
 /* ── Mobile menu ───────────────────────────────────────── */
