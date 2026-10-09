@@ -428,7 +428,7 @@
     order: 1;
   }
   .right {
-    width: 100%;
+    width: auto;
     order: 2;
     justify-content: flex-end;
   }
