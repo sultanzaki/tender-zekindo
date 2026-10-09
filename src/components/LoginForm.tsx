@@ -13,7 +13,7 @@ export function LoginForm({ next }: { next: string }) {
     <div className={styles.page}>
       <div className={`${shared.card} ${styles.card}`}>
         <div className={styles.brand}>
-          <Image src="/logo.png" alt="Zekindo" height={24} width={100} style={{ height: 24, width: "auto" }} priority />
+          <Image src="/logo.png" alt="Zekindo" width={72} height={24} priority />
           <span className={styles.brandTitle}>Tender Management</span>
         </div>
         <h1 className={styles.title}>Sign in</h1>

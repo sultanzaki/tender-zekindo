@@ -3,6 +3,7 @@
 import type { TrackComparisonRow } from "@/lib/analytics";
 import { formatCompactRupiah } from "@/lib/analytics";
 import { CHART_COLORS } from "./chartColors";
+import styles from "./charts.module.css";
 
 const META: Record<string, { label: string; color: string }> = {
   upstream: { label: "Upstream", color: CHART_COLORS.primary },
@@ -19,7 +20,7 @@ export function TrackComparisonChart({ data }: { data: TrackComparisonRow[] }) {
   }
 
   return (
-    <div style={{ display: "flex", gap: 16, padding: "4px 20px 20px" }}>
+    <div className={styles.trackGrid}>
       {data.map((row) => {
         const meta = META[row.track];
         return (
