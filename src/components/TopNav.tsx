@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { logout } from "@/lib/auth/actions";
 import type { Profile } from "@/lib/types";
 import styles from "./TopNav.module.css";
@@ -41,7 +41,14 @@ function initials(name: string): string {
 export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | null; notificationCount?: number }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [hamburgerOpen, setHamburgerOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const hamburgerRef = useRef<HTMLDivElement>(null);
+
+  function closeAll() {
+    setMenuOpen(false);
+    setHamburgerOpen(false);
+  }
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -95,6 +102,21 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
       </div>
 
       <div className={styles.right}>
+        <button
+          type="button"
+          className={styles.hamburger}
+          onClick={() => setHamburgerOpen((v) => !v)}
+          aria-label={hamburgerOpen ? "Close menu" : "Open menu"}
+          aria-expanded={hamburgerOpen}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            {hamburgerOpen ? (
+              <path d="M18 6 6 18M6 6l12 12" />
+            ) : (
+              <path d="M3 12h18M3 6h18M3 18h18" />
+            )}
+          </svg>
+        </button>
         {profile && isAdmin && (
           <Suspense
             fallback={
@@ -216,6 +238,69 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
         </Link>
       )}
       </div>
+
+      {hamburgerOpen && (
+        <div className={styles.mobileMenu}>
+          <Link
+            href="/"
+            className={`${styles.mobileItem} ${pathname === "/" ? styles.mobileActive : ""}`}
+            onClick={() => setHamburgerOpen(false)}
+          >
+            Analytics
+          </Link>
+          <Link
+            href="/tenders"
+            className={`${styles.mobileItem} ${pathname.startsWith("/tenders") ? styles.mobileActive : ""}`}
+            onClick={() => setHamburgerOpen(false)}
+          >
+            Tenders
+          </Link>
+          <Link
+            href="/notifications"
+            className={`${styles.mobileItem} ${pathname === "/notifications" ? styles.mobileActive : ""}`}
+            onClick={() => setHamburgerOpen(false)}
+          >
+            Notifications
+            {notificationCount > 0 && <span className={styles.mobileBadge}>{notificationCount}</span>}
+          </Link>
+          {profile && isAdmin && (
+            <Link
+              href="/tenders/new"
+              className={`${styles.mobileItem} ${pathname === "/tenders/new" ? styles.mobileActive : ""}`}
+              onClick={() => setHamburgerOpen(false)}
+            >
+              + New Tender
+            </Link>
+          )}
+          {profile && isAdmin && (
+            <Link
+              href="/tenders/archive"
+              className={styles.mobileItem}
+              onClick={() => setHamburgerOpen(false)}
+            >
+              Archived tenders
+            </Link>
+          )}
+          {profile && isAdmin && (
+            <Link
+              href="/admin/milestones"
+              className={styles.mobileItem}
+              onClick={() => setHamburgerOpen(false)}
+            >
+              Manage milestones
+            </Link>
+          )}
+          {!profile && (
+            <Link
+              href="/login"
+              className={`${styles.mobileItem} ${pathname === "/login" ? styles.mobileActive : ""}`}
+              onClick={() => setHamburgerOpen(false)}
+            >
+              Sign in
+            </Link>
+          )}
+        </div>
+      )}
     </header>
   );
 }

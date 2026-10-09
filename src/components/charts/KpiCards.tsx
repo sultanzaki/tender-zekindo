@@ -3,6 +3,7 @@ import styles from "./charts.module.css";
 
 export interface KpiData {
   pipelineValue: number;
+  hidePipeline?: boolean;
   winValue: number;
   runningCount: number;
   winRatePct: number | null;
@@ -14,11 +15,13 @@ export interface KpiData {
 export function KpiCards({ data }: { data: KpiData }) {
   return (
     <div className={styles.kpiGrid}>
-      <div className={styles.kpiCard}>
-        <div className={styles.kpiLabel}>Pipeline Value</div>
-        <div className={styles.kpiValue}>{formatRupiah(data.pipelineValue)}</div>
-        <div className={styles.kpiCaption}>Sum of OE for running tenders</div>
-      </div>
+      {!data.hidePipeline && (
+        <div className={styles.kpiCard}>
+          <div className={styles.kpiLabel}>Pipeline Value</div>
+          <div className={styles.kpiValue}>{formatRupiah(data.pipelineValue)}</div>
+          <div className={styles.kpiCaption}>Sum of OE for running tenders</div>
+        </div>
+      )}
       <div className={styles.kpiCard}>
         <div className={styles.kpiLabel}>Win Value</div>
         <div className={styles.kpiValue}>{formatRupiah(data.winValue)}</div>

@@ -75,6 +75,7 @@ export default async function AnalyticsDashboardPage({
   const overall = overallWinRate(tenders);
   const kpiData = {
     pipelineValue: totalPipelineValue(tenders),
+    hidePipeline: track === "downstream",
     winValue: totalWinValue(tenders),
     runningCount: runningCount(tenders),
     winRatePct: overall.pct,
@@ -112,23 +113,25 @@ export default async function AnalyticsDashboardPage({
 
       <KpiCards data={kpiData} />
 
-      <div className={chartStyles.grid2} style={{ marginBottom: 20 }}>
-        <div className={shared.card} style={{ overflow: "hidden" }}>
-          <div className={shared.cardHeader}>
-            <h2 className={shared.cardTitle}>Win Rate Trend</h2>
-            <span className={shared.cardMeta}>By period, decided tenders only</span>
+      {track !== "downstream" && (
+        <div className={chartStyles.grid2} style={{ marginBottom: 20 }}>
+          <div className={shared.card} style={{ overflow: "hidden" }}>
+            <div className={shared.cardHeader}>
+              <h2 className={shared.cardTitle}>Win Rate Trend</h2>
+              <span className={shared.cardMeta}>By period, decided tenders only</span>
+            </div>
+            <WinRateTrendChart data={outcomeRows} />
           </div>
-          <WinRateTrendChart data={outcomeRows} />
-        </div>
 
-        <div className={shared.card} style={{ overflow: "hidden" }}>
-          <div className={shared.cardHeader}>
-            <h2 className={shared.cardTitle}>Outcome Volume</h2>
-            <span className={shared.cardMeta}>Tender count by outcome, per period</span>
+          <div className={shared.card} style={{ overflow: "hidden" }}>
+            <div className={shared.cardHeader}>
+              <h2 className={shared.cardTitle}>Outcome Volume</h2>
+              <span className={shared.cardMeta}>Tender count by outcome, per period</span>
+            </div>
+            <OutcomeVolumeChart data={outcomeRows} />
           </div>
-          <OutcomeVolumeChart data={outcomeRows} />
         </div>
-      </div>
+      )}
 
       <div className={shared.card} style={{ marginBottom: 20, overflow: "hidden" }}>
         <div className={shared.cardHeader}>
@@ -174,13 +177,15 @@ export default async function AnalyticsDashboardPage({
         </div>
       </div>
 
-      <div className={shared.card} style={{ overflow: "hidden" }}>
-        <div className={shared.cardHeader}>
-          <h2 className={shared.cardTitle}>Pipeline Value by Area</h2>
-          <span className={shared.cardMeta}>OE of currently running tenders, top 8 areas</span>
+      {track !== "downstream" && (
+        <div className={shared.card} style={{ overflow: "hidden" }}>
+          <div className={shared.cardHeader}>
+            <h2 className={shared.cardTitle}>Pipeline Value by Area</h2>
+            <span className={shared.cardMeta}>OE of currently running tenders, top 8 areas</span>
+          </div>
+          <PipelineValueChart data={pipelineByArea} emptyMessage="No running tenders with an OE value yet." />
         </div>
-        <PipelineValueChart data={pipelineByArea} emptyMessage="No running tenders with an OE value yet." />
-      </div>
+      )}
     </div>
   );
 }

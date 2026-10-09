@@ -391,7 +391,7 @@ export function TenderTableClient({
                     </th>
                   )}
                   {sortableHeader("rowNo", "No")}
-                  {visibleCols.track && (
+                  {visibleCols.track && (track as string) === "all" && (
                     <th className={styles.th} title="Upstream or downstream">
                       Track
                     </th>
@@ -400,7 +400,7 @@ export function TenderTableClient({
                   {sortableHeader("tenderNo", "Tender No.")}
                   {sortableHeader("customer", "Customer")}
                   {sortableHeader("product", "Package")}
-                  {sortableHeader("entitas", "Entity")}
+                  {track !== "downstream" && sortableHeader("entitas", "Entity")}
                   {visibleCols.period && sortableHeader("period", "Period")}
                   {visibleCols.oe && sortableHeader("oe", "OE (Rp)", "right")}
                   {visibleCols.qty && sortableHeader("qty", "Qty", "right")}
@@ -429,7 +429,7 @@ export function TenderTableClient({
                       </td>
                     )}
                     <td className={`${styles.td} ${styles.tdMuted}`}>{t.rowNo}</td>
-                    {visibleCols.track && (
+                    {visibleCols.track && (track as string) === "all" && (
                       <td className={`${styles.td} ${styles.tdNoWrap}`}>
                         {t.track === "downstream" ? (
                           <TrackBadge track={t.track} />
@@ -448,7 +448,7 @@ export function TenderTableClient({
                     <td className={`${styles.td} ${styles.tdEllipsis}`} style={{ maxWidth: 340 }} title={t.product ?? undefined}>
                       {t.product || "—"}
                     </td>
-                    <td className={`${styles.td} ${styles.tdNoWrap}`}>{t.entitas || "—"}</td>
+                    {track !== "downstream" && <td className={`${styles.td} ${styles.tdNoWrap}`}>{t.entitas || "—"}</td>}
                     {visibleCols.period && <td className={styles.td}>{t.period}</td>}
                     {visibleCols.oe && <td className={`${styles.td} ${styles.tdRight}`}>{formatRupiah(t.oe)}</td>}
                     {visibleCols.qty && <td className={`${styles.td} ${styles.tdRight}`}>{t.qty ?? "—"}</td>}
