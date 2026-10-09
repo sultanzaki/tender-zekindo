@@ -84,21 +84,6 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
           <Image src="/logo.png" alt="Zekindo" height={24} width={100} style={{ height: 24, width: "auto" }} priority />
           <span className={styles.brandTitle}>Tender Management</span>
         </Link>
-        <button
-          type="button"
-          className={styles.hamburger}
-          onClick={() => setHamburgerOpen((v) => !v)}
-          aria-label={hamburgerOpen ? "Close menu" : "Open menu"}
-          aria-expanded={hamburgerOpen}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            {hamburgerOpen ? (
-              <path d="M18 6 6 18M6 6l12 12" />
-            ) : (
-              <path d="M3 12h18M3 6h18M3 18h18" />
-            )}
-          </svg>
-        </button>
         <nav className={styles.tabs} aria-label="Main">
           {NAV_ITEMS.map((item) => {
             const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
@@ -117,6 +102,21 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
       </div>
 
       <div className={styles.right}>
+        <button
+          type="button"
+          className={styles.hamburger}
+          onClick={() => setHamburgerOpen((v) => !v)}
+          aria-label={hamburgerOpen ? "Close menu" : "Open menu"}
+          aria-expanded={hamburgerOpen}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            {hamburgerOpen ? (
+              <path d="M18 6 6 18M6 6l12 12" />
+            ) : (
+              <path d="M3 12h18M3 6h18M3 18h18" />
+            )}
+          </svg>
+        </button>
         {profile && isAdmin && (
           <Suspense
             fallback={
