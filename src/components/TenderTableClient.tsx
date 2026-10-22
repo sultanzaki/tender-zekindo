@@ -100,8 +100,9 @@ export function TenderTableClient({
   const [pageSize, setPageSize] = useState(50);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [quickEditError, setQuickEditError] = useState<string | null>(null);
-  const [, startTransition] = useTransition();
+  const [quickEditPending, startTransition] = useTransition();
   const menuRef = useRef<HTMLDivElement>(null);
+  const columnToggleRef = useRef<HTMLButtonElement>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
@@ -112,7 +113,17 @@ export function TenderTableClient({
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setShowColMenu(false);
     }
     document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setShowColMenu(false);
+        columnToggleRef.current?.focus();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onClickOutside);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [showColMenu]);
 
   const filtered = useMemo(() => filterTenders(tenders, filters), [tenders, filters]);
@@ -132,6 +143,16 @@ export function TenderTableClient({
   );
 
   const visibleMilestones = milestoneTypes.filter((m) => visibleCols[m.key]);
+
+  function changeFilters(update: (previous: TenderFilters) => TenderFilters) {
+    setFilters(update);
+    setPage(1);
+    setSelected(new Set());
+  }
+
+  function resetFilters() {
+    changeFilters(() => DEFAULT_FILTERS);
+  }
 
   // ── Bulk selection ──────────────────────────────────────────────────────
   const pageIds = pageItems.map((t) => t.id);
@@ -176,15 +197,18 @@ export function TenderTableClient({
 
     setBulkBusy(true);
     setBulkMessage(null);
+    setQuickEditError(null);
     try {
       const result = action === "archive" ? await bulkArchiveTenders(ids) : await bulkDeleteTenders(ids);
       if (result.error) {
-        setBulkMessage(result.error);
+        setQuickEditError(result.error);
         return;
       }
       setSelected(new Set());
       setBulkMessage(`${result.count} tender${result.count === 1 ? "" : "s"} ${action === "archive" ? "archived" : "deleted"}.`);
       router.refresh();
+    } catch {
+      setQuickEditError("Could not complete the bulk action. Please try again.");
     } finally {
       setBulkBusy(false);
     }
@@ -231,30 +255,38 @@ export function TenderTableClient({
   function sortableHeader(key: SortKey, label: string, align: "left" | "right" = "left", title?: string) {
     return (
       <th
+        key={key}
+        scope="col"
+        aria-sort={sort?.key === key ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}
         className={`${styles.th} ${align === "right" ? styles.thRight : ""} ${styles.thSortable}`}
-        onClick={() => toggleSort(key)}
         title={title}
       >
-        {label}
-        <SortIndicator active={sort?.key === key} direction={sort?.direction ?? "asc"} />
+        <button type="button" className={styles.sortButton} onClick={() => toggleSort(key)}>
+          {label}
+          <SortIndicator active={sort?.key === key} direction={sort?.direction ?? "asc"} />
+        </button>
       </th>
     );
   }
 
   return (
     <div className={styles.wrap}>
+      <h1 className={styles.title}>Tenders</h1>
       <div className={shared.card} style={{ overflow: "visible" }}>
         <div className={styles.toolbar}>
           <input
+            aria-label="Search tenders"
+            type="search"
             className={styles.search}
             placeholder="Search tender number or package title..."
             value={filters.search}
-            onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
+            onChange={(e) => changeFilters((f) => ({ ...f, search: e.target.value }))}
           />
           <select
             className={styles.select}
+            aria-label="Period"
             value={filters.period}
-            onChange={(e) => setFilters((f) => ({ ...f, period: e.target.value }))}
+            onChange={(e) => changeFilters((f) => ({ ...f, period: e.target.value }))}
           >
             <option value="all">All Periods</option>
             {options.periods.map((p) => (
@@ -263,7 +295,8 @@ export function TenderTableClient({
               </option>
             ))}
           </select>
-          <select className={styles.select} value={filters.area} onChange={(e) => setFilters((f) => ({ ...f, area: e.target.value }))}>
+          <select className={styles.select} aria-label="Area"
+            value={filters.area} onChange={(e) => changeFilters((f) => ({ ...f, area: e.target.value }))}>
             <option value="all">All Areas</option>
             {options.areas.map((a) => (
               <option key={a} value={a}>
@@ -273,8 +306,9 @@ export function TenderTableClient({
           </select>
           <select
             className={styles.select}
+            aria-label="Entity"
             value={filters.entitas}
-            onChange={(e) => setFilters((f) => ({ ...f, entitas: e.target.value }))}
+            onChange={(e) => changeFilters((f) => ({ ...f, entitas: e.target.value }))}
           >
             <option value="all">All Entities</option>
             {options.entitasList.map((en) => (
@@ -285,8 +319,9 @@ export function TenderTableClient({
           </select>
           <select
             className={styles.select}
+            aria-label="Customer"
             value={filters.customer}
-            onChange={(e) => setFilters((f) => ({ ...f, customer: e.target.value }))}
+            onChange={(e) => changeFilters((f) => ({ ...f, customer: e.target.value }))}
           >
             <option value="all">All Customers</option>
             {options.customers.map((c) => (
@@ -297,8 +332,9 @@ export function TenderTableClient({
           </select>
           <select
             className={styles.select}
+            aria-label="Result"
             value={filters.result}
-            onChange={(e) => setFilters((f) => ({ ...f, result: e.target.value }))}
+            onChange={(e) => changeFilters((f) => ({ ...f, result: e.target.value }))}
           >
             <option value="all">All Results</option>
             <option value="__EMPTY__">(Running / no result)</option>
@@ -309,11 +345,11 @@ export function TenderTableClient({
             ))}
           </select>
           <div className={styles.colMenuWrap} ref={menuRef}>
-            <button className={styles.colMenuButton} onClick={() => setShowColMenu((v) => !v)}>
+            <button ref={columnToggleRef} aria-expanded={showColMenu} aria-controls="table-columns" className={styles.colMenuButton} onClick={() => setShowColMenu((v) => !v)}>
               Columns
             </button>
             {showColMenu && (
-              <div className={styles.colMenu}>
+              <div id="table-columns" className={styles.colMenu}>
                 {FIELD_TOGGLES.map((c) => (
                   <label key={c.key} className={styles.colMenuItem}>
                     <input
@@ -337,7 +373,7 @@ export function TenderTableClient({
               </div>
             )}
           </div>
-          <button className={styles.resetButton} onClick={() => setFilters(DEFAULT_FILTERS)}>
+          <button className={styles.resetButton} onClick={resetFilters}>
             Reset filters
           </button>
           <a href={exportHref} className={styles.resetButton}>
@@ -348,7 +384,7 @@ export function TenderTableClient({
               Archive
             </Link>
           )}
-          <span className={styles.resultCount}>
+          <span className={styles.resultCount} role="status">
             {filtered.length} of {tenders.length} tenders
           </span>
         </div>
@@ -369,9 +405,9 @@ export function TenderTableClient({
           </div>
         )}
 
-        {bulkMessage && <div className={styles.bulkMessage}>{bulkMessage}</div>}
+        {bulkMessage && <div role="status" className={styles.bulkMessage}>{bulkMessage}</div>}
 
-        {quickEditError && <div className={styles.quickEditError}>{quickEditError}</div>}
+        {quickEditError && <div role="alert" className={styles.quickEditError}>{quickEditError}</div>}
 
         {pageItems.length > 0 ? (
           <div className={styles.scroll}>
@@ -440,7 +476,9 @@ export function TenderTableClient({
                     )}
                     <td className={styles.td}>{t.area}</td>
                     <td className={`${styles.td} ${styles.tdNoWrap}`} style={{ color: "var(--color-fg2)" }}>
-                      {t.tenderNo || "—"}
+                      <Link href={`/tenders/${t.id}`} onClick={(e) => e.stopPropagation()}>
+                        {t.tenderNo || "View tender"}
+                      </Link>
                     </td>
                     <td className={`${styles.td} ${styles.tdEllipsis}`} style={{ maxWidth: 220 }} title={t.customer}>
                       {t.customer || "—"}
@@ -464,6 +502,7 @@ export function TenderTableClient({
                           <td key={m.key} className={styles.dateCell} onClick={(e) => e.stopPropagation()}>
                             <input
                               type="date"
+                              aria-label={`Edit ${m.label} for ${t.tenderNo || t.id}`}
                               autoFocus
                               defaultValue={iso ?? ""}
                               className={styles.inlineDateInput}
@@ -477,23 +516,29 @@ export function TenderTableClient({
                         <td
                           key={m.key}
                           className={`${styles.dateCell} ${DATE_TONE_CLASS[tone]} ${isAdmin ? styles.editableCell : ""}`}
-                          onClick={
-                            isAdmin
-                              ? (e) => {
-                                  e.stopPropagation();
-                                  setEditingCell({ tenderId: t.id, column: m.key });
-                                }
-                              : undefined
-                          }
                           title={isAdmin ? `Click to edit ${m.label}` : m.label}
                         >
-                          {iso ? formatDateID(iso) : "—"}
+                          {isAdmin ? (
+                            <button
+                              type="button"
+                              className={styles.cellButton}
+                            disabled={quickEditPending}
+                              aria-label={`Edit ${m.label} for ${t.tenderNo || t.id}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingCell({ tenderId: t.id, column: m.key });
+                              }}
+                            >
+                              {iso ? formatDateID(iso) : "—"}
+                            </button>
+                          ) : (iso ? formatDateID(iso) : "—")}
                         </td>
                       );
                     })}
                     <td className={`${styles.td} ${styles.tdNoWrap}`}>
                       {isAdmin && editingCell?.tenderId === t.id && editingCell.column === "result" ? (
                         <select
+                          aria-label={`Edit result for ${t.tenderNo || t.id}`}
                           autoFocus
                           defaultValue={t.result ?? ""}
                           className={styles.inlineSelect}
@@ -509,20 +554,20 @@ export function TenderTableClient({
                           ))}
                         </select>
                       ) : (
-                        <span
-                          onClick={
-                            isAdmin
-                              ? (e) => {
-                                  e.stopPropagation();
-                                  setEditingCell({ tenderId: t.id, column: "result" });
-                                }
-                              : undefined
-                          }
-                          style={isAdmin ? { cursor: "pointer" } : undefined}
-                          title={isAdmin ? "Click to edit" : undefined}
-                        >
-                          <ResultBadge result={t.result} />
-                        </span>
+                        isAdmin ? (
+                          <button
+                            type="button"
+                            className={styles.cellButton}
+                            disabled={quickEditPending}
+                            aria-label={`Edit result for ${t.tenderNo || t.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingCell({ tenderId: t.id, column: "result" });
+                            }}
+                          >
+                            <ResultBadge result={t.result} />
+                          </button>
+                        ) : <ResultBadge result={t.result} />
                       )}
                     </td>
                   </tr>
@@ -533,7 +578,7 @@ export function TenderTableClient({
         ) : (
           <div className={styles.emptyBox}>
             <div className={styles.emptyText}>No tenders match this filter.</div>
-            <button className={styles.emptyReset} onClick={() => setFilters(DEFAULT_FILTERS)}>
+            <button className={styles.emptyReset} onClick={resetFilters}>
               Reset filters
             </button>
           </div>
@@ -544,9 +589,10 @@ export function TenderTableClient({
             <div className={styles.pageSizeGroup}>
               <span>Rows per page</span>
               <select
+                aria-label="Rows per page"
                 className={styles.select}
                 value={pageSize}
-                onChange={(e) => setPageSize(Number(e.target.value))}
+                onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
               >
                 {PAGE_SIZES.map((size) => (
                   <option key={size} value={size}>
@@ -559,7 +605,7 @@ export function TenderTableClient({
               <button
                 className={styles.pageButton}
                 disabled={safePage <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                onClick={() => setPage(Math.max(1, safePage - 1))}
               >
                 Previous
               </button>
@@ -569,7 +615,7 @@ export function TenderTableClient({
               <button
                 className={styles.pageButton}
                 disabled={safePage >= pageCount}
-                onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                onClick={() => setPage(Math.min(pageCount, safePage + 1))}
               >
                 Next
               </button>

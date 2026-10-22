@@ -26,6 +26,7 @@ export default async function TenderTablePage({
     <>
       <TrackSwitch current={track} basePath="/tenders" params={flatParams(sp)} />
       <TenderTableClient
+        key={track}
         tenders={tenders}
         options={options}
         milestoneTypes={milestoneTypes}

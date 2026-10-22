@@ -79,6 +79,7 @@ export function NewTenderForm({
     setOrders((prev) => ({ ...prev, [track]: update(prev[track]) }));
 
   const addSelectRef = useRef<HTMLSelectElement>(null);
+  const stepRef = useRef<HTMLDivElement>(null);
 
   // Milestones created from this form, kept locally because the catalog prop was
   // read on the server before they existed. Without this the new milestone would
@@ -181,16 +182,32 @@ export function NewTenderForm({
     [formData.tenderNo, existingTenders]
   );
   const milestoneOrderIssues = useMemo(
-    () => findOutOfOrderMilestones(formData.milestones, milestoneTypes),
-    [formData.milestones, milestoneTypes]
+    () => findOutOfOrderMilestones(formData.milestones, orderedDefs),
+    [formData.milestones, orderedDefs]
   );
 
   function handleSubmit() {
     setError(null);
+    if (!formData.area.trim() || !formData.customer.trim()) {
+      setStep(1);
+      setError("Select an area and customer before saving.");
+      return;
+    }
     startTransition(async () => {
       const result = await createTender({ ...formData, milestoneOrder: order });
       if (result?.error) setError(result.error);
     });
+  }
+
+  function nextStep() {
+    const invalid = stepRef.current?.querySelector<HTMLInputElement | HTMLSelectElement>(":invalid");
+    if (invalid) {
+      invalid.reportValidity();
+      invalid.focus();
+      return;
+    }
+    setError(null);
+    setStep((current) => Math.min(3, current + 1));
   }
 
   /** Upstream | Downstream. Shown on step 1 (where the tender's identity is
@@ -234,8 +251,8 @@ export function NewTenderForm({
 
   return (
     <div className={styles.page}>
-      <div className={`${shared.card} ${styles.card}`}>
-        <div className={styles.steps}>
+      <div ref={stepRef} className={`${shared.card} ${styles.card}`}>
+        <div className={styles.steps} aria-label={`Step ${step} of 3: ${STEP_LABELS[step - 1]}`}>
           {STEP_LABELS.map((label, i) => {
             const num = i + 1;
             const active = num <= step;
@@ -473,7 +490,7 @@ export function NewTenderForm({
           </div>
         )}
 
-        {error && <div className={styles.errorBanner}>{error}</div>}
+        {error && <div role="alert" className={styles.errorBanner}>{error}</div>}
 
         <div className={styles.footer}>
           <button
@@ -488,7 +505,7 @@ export function NewTenderForm({
               {isPending ? "Saving..." : "Save Tender"}
             </button>
           ) : (
-            <button className={styles.nextButton} onClick={() => setStep((s) => Math.min(3, s + 1))}>
+            <button className={styles.nextButton} onClick={nextStep} disabled={isPending}>
               Next
             </button>
           )}

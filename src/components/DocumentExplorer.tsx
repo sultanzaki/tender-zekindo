@@ -9,7 +9,6 @@ import {
   prepareFileUpload,
   completeFileUpload,
   type FileTarget,
-  type UploadPrepItem,
 } from "@/lib/folder-actions";
 import type { DocumentFile, DocumentSection, DocumentTreeNode } from "@/lib/types";
 
@@ -54,6 +53,11 @@ function UploadProgressBar({
         <span>{Math.round(pct)}%</span>
       </div>
       <div
+        role="progressbar"
+        aria-label="File upload"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(pct)}
         style={{
           height: 8,
           borderRadius: 4,
@@ -118,6 +122,8 @@ function FolderBranch({
           onClick={() => setOpen((o) => !o)}
           style={{ border: "none", background: "none", cursor: "pointer", width: 16, padding: 0, color: "inherit" }}
           title={open ? "Collapse" : "Expand"}
+          aria-label={`${open ? "Collapse" : "Expand"} ${node.folder.name}`}
+          aria-expanded={open}
         >
           {open ? "▾" : "▸"}
         </button>
@@ -350,88 +356,96 @@ export function DocumentExplorer({
     if (!rawFiles || !rawFiles.length) return;
     setError(null);
 
-    const files = Array.from(rawFiles);
-    const totalBytes = files.reduce((s, f) => s + f.size, 0);
-    setUpload({
-      phase: "preparing",
-      pct: 0,
-      currentFile: files[0]?.name || "",
-      totalBytes,
-      uploadedBytes: 0,
-    });
+    try {
+      const files = Array.from(rawFiles);
+      const totalBytes = files.reduce((s, f) => s + f.size, 0);
+      setUpload({
+        phase: "preparing",
+        pct: 0,
+        currentFile: files[0]?.name || "",
+        totalBytes,
+        uploadedBytes: 0,
+      });
 
-    // 1. Get signed upload URLs from server
-    const target_ = { ...target(section), folderId: folderId ?? null };
-    const prep = await prepareFileUpload(
-      tenderId,
-      target_,
-      files.map((f) => ({ name: f.name, size: f.size, type: f.type }))
-    );
-    if ("error" in prep) {
-      setError(prep.error!);
-      setUpload(IDLE_UPLOAD);
-      return;
-    }
-
-    // 2. Upload each file directly to Supabase via XHR
-    setUpload((u) => ({ ...u, phase: "uploading" }));
-    let uploadedBytes = 0;
-    const uploaded: { path: string; fileName: string; size: number; contentType: string | null }[] = [];
-
-    for (const item of prep.uploads) {
-      const file = files[item.index];
-      if (!file) continue;
-
-      setUpload((u) => ({ ...u, currentFile: item.fileName }));
-
-      try {
-        await new Promise<void>((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          xhr.upload.onprogress = (e) => {
-            if (!e.lengthComputable) return;
-            const fileLoaded = uploadedBytes + e.loaded;
-            const pct = (fileLoaded / totalBytes) * 100;
-            setUpload((u) => ({ ...u, pct, uploadedBytes: fileLoaded }));
-          };
-          xhr.onload = () => {
-            if (xhr.status >= 200 && xhr.status < 300) {
-              uploadedBytes += file.size;
-              setUpload((u) => ({ ...u, uploadedBytes }));
-              uploaded.push({
-                path: item.path,
-                fileName: item.fileName,
-                size: file.size,
-                contentType: file.type || null,
-              });
-              resolve();
-            } else {
-              reject(new Error(`Upload gagal (HTTP ${xhr.status})`));
-            }
-          };
-          xhr.onerror = () => reject(new Error("Gagal terhubung ke storage."));
-          xhr.open("PUT", item.signedUrl);
-          xhr.setRequestHeader("Content-Type", item.contentType);
-          xhr.send(file);
-        });
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Upload gagal.");
+      // 1. Get signed upload URLs from server
+      const target_ = { ...target(section), folderId: folderId ?? null };
+      const prep = await prepareFileUpload(
+        tenderId,
+        target_,
+        files.map((f) => ({ name: f.name, size: f.size, type: f.type }))
+      );
+      if ("error" in prep) {
+        setError(prep.error!);
         setUpload(IDLE_UPLOAD);
         return;
       }
-    }
 
-    // 3. Register files in database
-    setUpload((u) => ({ ...u, phase: "finalizing", pct: 100 }));
-    const result = await completeFileUpload(tenderId, target_, uploaded);
-    if (result?.error) {
-      setError(result.error);
+      // 2. Upload each file directly to Supabase via XHR
+      setUpload((u) => ({ ...u, phase: "uploading" }));
+      let uploadedBytes = 0;
+      const uploaded: { path: string; fileName: string; size: number; contentType: string | null }[] = [];
+
+      for (const item of prep.uploads) {
+        const file = files[item.index];
+        if (!file) continue;
+
+        setUpload((u) => ({ ...u, currentFile: item.fileName }));
+
+        try {
+          await new Promise<void>((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.upload.onprogress = (e) => {
+              if (!e.lengthComputable) return;
+              const fileLoaded = uploadedBytes + e.loaded;
+              const pct = (fileLoaded / totalBytes) * 100;
+              setUpload((u) => ({ ...u, pct, uploadedBytes: fileLoaded }));
+            };
+            xhr.onload = () => {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                uploadedBytes += file.size;
+                setUpload((u) => ({ ...u, uploadedBytes }));
+                uploaded.push({
+                  path: item.path,
+                  fileName: item.fileName,
+                  size: file.size,
+                  contentType: file.type || null,
+                });
+                resolve();
+              } else {
+                reject(new Error(`Upload gagal (HTTP ${xhr.status})`));
+              }
+            };
+            xhr.timeout = 120000;
+            xhr.ontimeout = () => reject(new Error("Upload timed out. Please try again."));
+            xhr.onabort = () => reject(new Error("Upload canceled."));
+            xhr.onerror = () => reject(new Error("Gagal terhubung ke storage."));
+            xhr.open("PUT", item.signedUrl);
+            xhr.setRequestHeader("Content-Type", item.contentType);
+            xhr.send(file);
+          });
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Upload gagal.");
+          setUpload(IDLE_UPLOAD);
+          return;
+        }
+      }
+
+      // 3. Register files in database
+      setUpload((u) => ({ ...u, phase: "finalizing", pct: 100 }));
+      const result = await completeFileUpload(tenderId, target_, uploaded);
+      if (result?.error) {
+        setError(result.error);
+        setUpload(IDLE_UPLOAD);
+        return;
+      }
+
+      // 4. Done
+      setUpload({ phase: "done", pct: 100, currentFile: "", totalBytes, uploadedBytes });
+      setTimeout(() => setUpload(IDLE_UPLOAD), 2500);
+    } catch {
+      setError("Upload failed. Please check your connection and try again.");
       setUpload(IDLE_UPLOAD);
-      return;
     }
-
-    // 4. Done
-    setUpload({ phase: "done", pct: 100, currentFile: "", totalBytes, uploadedBytes });
-    setTimeout(() => setUpload(IDLE_UPLOAD), 2500);
   }
 
   const busy = isBusy();
@@ -450,6 +464,8 @@ export function DocumentExplorer({
                 onClick={() => setCollapsed((c) => ({ ...c, [section.id]: !isCollapsed }))}
                 style={{ border: "none", background: "none", cursor: "pointer", width: 16, padding: 0, color: "inherit" }}
                 title={isCollapsed ? "Expand" : "Collapse"}
+                aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${section.title}`}
+                aria-expanded={!isCollapsed}
               >
                 {isCollapsed ? "▸" : "▾"}
               </button>
@@ -479,6 +495,7 @@ export function DocumentExplorer({
                     style={{ fontSize: 11.5 }}
                     disabled={busy}
                     onClick={() => {
+                      setCollapsed((previous) => ({ ...previous, [section.id]: false }));
                       setAddingRoot(section.id);
                       setRootName("");
                     }}
@@ -573,7 +590,7 @@ export function DocumentExplorer({
       />
 
       {error && (
-        <div style={{ marginTop: 8, fontSize: 12.5, color: "var(--zk-error, #b91c1c)" }}>{error}</div>
+        <div role="alert" style={{ marginTop: 8, fontSize: 12.5, color: "var(--zk-error, #b91c1c)" }}>{error}</div>
       )}
     </div>
   );

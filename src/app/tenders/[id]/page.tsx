@@ -87,7 +87,7 @@ export default async function TenderDetailPage({ params }: { params: Promise<{ i
   return (
     <div className={styles.page}>
       <div className={styles.topBar}>
-        <Link href="/tenders" className={styles.backLink} style={{ marginBottom: 0 }}>
+        <Link href={tender.track === "downstream" ? "/tenders?track=downstream" : "/tenders"} className={styles.backLink} style={{ marginBottom: 0 }}>
           &larr; Back to table
         </Link>
         {isAdmin && (

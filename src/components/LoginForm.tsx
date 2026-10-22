@@ -22,17 +22,17 @@ export function LoginForm({ next }: { next: string }) {
           <input type="hidden" name="next" value={next} />
           <label className={styles.label}>
             Email
-            <input className={styles.input} type="email" name="email" placeholder="you@zekindo.co.id" required />
+            <input className={styles.input} type="email" autoComplete="username" autoCapitalize="none" name="email" placeholder="you@zekindo.co.id" required />
           </label>
           <label className={styles.label}>
             Password
-            <input className={styles.input} type="password" name="password" required />
+            <input className={styles.input} type="password" autoComplete="current-password" name="password" required />
           </label>
           <button className={styles.submitButton} type="submit" disabled={isPending}>
             {isPending ? "Signing in..." : "Sign in"}
           </button>
         </form>
-        {state?.error && <div className={styles.errorBanner}>{state.error}</div>}
+        {state?.error && <div role="alert" className={styles.errorBanner}>{state.error}</div>}
       </div>
     </div>
   );

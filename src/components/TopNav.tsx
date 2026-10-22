@@ -13,13 +13,15 @@ import styles from "./TopNav.module.css";
  * Reads the query string rather than taking a prop because the nav sits in the
  * root layout, which cannot see a page's searchParams. Suspense-wrapped at the
  * call site because useSearchParams suspends while the URL is resolved. */
-function NewTenderLink() {
+function NewTenderLink({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?: () => void } = {}) {
   const params = useSearchParams();
   const href = params.get("track") === "downstream" ? "/tenders/new?track=downstream" : "/tenders/new";
   return (
-    <Link href={href} className={styles.newButton}>
-      <span className={styles.newButtonFull}>+ New Tender</span>
-      <span className={styles.newButtonShort}>+ New</span>
+    <Link href={href} className={mobile ? styles.mobileItem : styles.newButton} onClick={onNavigate}>
+      {mobile ? "+ New Tender" : <>
+        <span className={styles.newButtonFull}>+ New Tender</span>
+        <span className={styles.newButtonShort}>+ New</span>
+      </>}
     </Link>
   );
 }
@@ -43,6 +45,27 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
   const [menuOpen, setMenuOpen] = useState(false);
   const [hamburgerOpen, setHamburgerOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLElement>(null);
+  const mobileToggleRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!hamburgerOpen) return;
+    function dismiss(event: PointerEvent) {
+      if (!headerRef.current?.contains(event.target as Node)) setHamburgerOpen(false);
+    }
+    function escape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setHamburgerOpen(false);
+        mobileToggleRef.current?.focus();
+      }
+    }
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [hamburgerOpen]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -72,7 +95,7 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
   const isAdmin = profile?.role === "admin";
 
   return (
-    <header className={styles.bar}>
+    <header className={styles.bar} ref={headerRef}>
       <div className={styles.left}>
         <Link href="/" className={styles.brand}>
           <Image src="/logo.png" alt="Zekindo" width={72} height={24} priority />
@@ -99,6 +122,8 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
         <button
           type="button"
           className={styles.hamburger}
+          ref={mobileToggleRef}
+          aria-controls="mobile-navigation"
           onClick={() => setHamburgerOpen((v) => !v)}
           aria-label={hamburgerOpen ? "Close menu" : "Open menu"}
           aria-expanded={hamburgerOpen}
@@ -149,7 +174,7 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
             type="button"
             className={`${styles.userButton} ${menuOpen ? styles.userButtonOpen : ""}`}
             onClick={() => setMenuOpen((v) => !v)}
-            aria-haspopup="menu"
+            aria-label={`Account: ${profile.name}`}
             aria-expanded={menuOpen}
           >
             <span className={styles.avatar}>{initials(profile.name) || "?"}</span>
@@ -173,7 +198,7 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
           </button>
 
           {menuOpen && (
-            <div className={styles.menu} role="menu">
+            <div className={styles.menu}>
               <div className={styles.menuHeader}>
                 <div className={styles.menuAvatar}>{initials(profile.name) || "?"}</div>
                 <div style={{ minWidth: 0 }}>
@@ -187,7 +212,7 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
                   <Link
                     href="/tenders/archive"
                     className={styles.menuItem}
-                    role="menuitem"
+
                     onClick={() => setMenuOpen(false)}
                   >
                     Archived tenders
@@ -195,7 +220,7 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
                   <Link
                     href="/admin/users"
                     className={styles.menuItem}
-                    role="menuitem"
+
                     onClick={() => setMenuOpen(false)}
                   >
                     Manage users
@@ -203,7 +228,7 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
                   <Link
                     href="/admin/milestones"
                     className={styles.menuItem}
-                    role="menuitem"
+
                     onClick={() => setMenuOpen(false)}
                   >
                     Manage milestones
@@ -215,7 +240,7 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
 
               <div className={styles.menuDivider} />
               <form action={logout} onSubmit={() => setMenuOpen(false)}>
-                <button type="submit" className={styles.menuItemDanger} role="menuitem">
+                <button type="submit" className={styles.menuItemDanger}>
                   Sign out
                 </button>
               </form>
@@ -234,7 +259,7 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
       </div>
 
       {hamburgerOpen && (
-        <div className={styles.mobileMenu}>
+        <nav id="mobile-navigation" className={styles.mobileMenu} aria-label="Mobile navigation">
           <Link
             href="/"
             className={`${styles.mobileItem} ${pathname === "/" ? styles.mobileActive : ""}`}
@@ -258,13 +283,9 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
             {notificationCount > 0 && <span className={styles.mobileBadge}>{notificationCount}</span>}
           </Link>
           {profile && isAdmin && (
-            <Link
-              href="/tenders/new"
-              className={`${styles.mobileItem} ${pathname === "/tenders/new" ? styles.mobileActive : ""}`}
-              onClick={() => setHamburgerOpen(false)}
-            >
-              + New Tender
-            </Link>
+            <Suspense fallback={<Link href="/tenders/new" className={styles.mobileItem}>+ New Tender</Link>}>
+              <NewTenderLink mobile onNavigate={() => setHamburgerOpen(false)} />
+            </Suspense>
           )}
           {profile && isAdmin && (
             <Link
@@ -284,6 +305,16 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
               Manage milestones
             </Link>
           )}
+          {profile && isAdmin && (
+            <Link href="/admin/users" className={styles.mobileItem} onClick={() => setHamburgerOpen(false)}>
+              Manage users
+            </Link>
+          )}
+          {profile && (
+            <form action={logout} onSubmit={() => setHamburgerOpen(false)}>
+              <button type="submit" className={styles.menuItemDanger}>Sign out</button>
+            </form>
+          )}
           {!profile && (
             <Link
               href="/login"
@@ -293,7 +324,7 @@ export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | 
               Sign in
             </Link>
           )}
-        </div>
+        </nav>
       )}
     </header>
   );

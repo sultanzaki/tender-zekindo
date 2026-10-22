@@ -50,7 +50,7 @@
 
   --color-fg1: var(--zk-gray-900);
   --color-fg2: #444444;
-  --color-fg3: #888888;
+  --color-fg3: #666666;
   --color-fg-on-primary: var(--zk-gray-0);
 
   --color-border: #e0e0e0;
@@ -132,3 +132,12 @@ button {
     font-size: 16px !important;
   }
 }
+
+/* Keep keyboard focus visible even where individual controls remove outlines. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-primary-dark) !important;
+  outline-offset: 3px;
+}
+
+button:disabled { cursor: not-allowed; }
+input, select, textarea { max-width: 100%; min-width: 0; }

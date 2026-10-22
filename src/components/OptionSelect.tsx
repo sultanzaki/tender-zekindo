@@ -52,6 +52,7 @@ export function OptionSelect({
   }
 
   function handleAdd() {
+    if (isPending || !draft.trim()) return;
     setError(null);
     startTransition(async () => {
       const result = await addSelectOption(field, draft);
@@ -69,10 +70,11 @@ export function OptionSelect({
 
   if (adding) {
     return (
-      <div style={{ display: "flex", gap: 6 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
         <input
           className={className}
           style={{ flex: 1 }}
+          aria-label={`New ${label.toLowerCase()}`}
           autoFocus
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -102,6 +104,7 @@ export function OptionSelect({
         </button>
         <button
           type="button"
+          disabled={isPending}
           onClick={() => {
             setAdding(false);
             setDraft("");
@@ -119,7 +122,7 @@ export function OptionSelect({
         >
           Cancel
         </button>
-        {error && <span style={{ color: "var(--zk-error)", fontSize: 12, alignSelf: "center" }}>{error}</span>}
+        {error && <span role="alert" style={{ color: "var(--zk-error)", fontSize: 12, alignSelf: "center" }}>{error}</span>}
       </div>
     );
   }
@@ -129,6 +132,7 @@ export function OptionSelect({
       className={className}
       value={value}
       required={required}
+      aria-label={label}
       onChange={(e) => handleSelectChange(e.target.value)}
     >
       <option value="">Select {label.toLowerCase()}</option>

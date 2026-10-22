@@ -122,8 +122,8 @@ export function EditTenderForm({
     [formData.tenderNo, existingTenders, tender.id]
   );
   const milestoneOrderIssues = useMemo(
-    () => findOutOfOrderMilestones(formData.milestones, milestoneTypes),
-    [formData.milestones, milestoneTypes]
+    () => findOutOfOrderMilestones(formData.milestones, orderedDefs),
+    [formData.milestones, orderedDefs]
   );
 
   function field<K extends keyof TenderEditFormValues>(key: K) {
@@ -482,7 +482,7 @@ export function EditTenderForm({
           ))}
         </div>
 
-        {error && <div className={styles.errorBanner}>{error}</div>}
+        {error && <div role="alert" className={styles.errorBanner}>{error}</div>}
 
         <div className={styles.footer}>
           <Link href={`/tenders/${tender.id}`} className={styles.backButton} style={{ textDecoration: "none" }}>

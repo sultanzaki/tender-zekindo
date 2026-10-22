@@ -9,12 +9,12 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
   }, [error]);
 
   return (
-    <div style={{ padding: 80, textAlign: "center", maxWidth: 480, margin: "0 auto" }}>
-      <div style={{ fontSize: 16, fontWeight: 600, color: "var(--color-fg1)", marginBottom: 8 }}>
+    <div style={{ padding: "48px 24px", textAlign: "center", maxWidth: 480, margin: "0 auto" }}>
+      <h1 style={{ fontSize: 16, fontWeight: 600, color: "var(--color-fg1)", marginBottom: 8 }}>
         Something went wrong
-      </div>
+      </h1>
       <div style={{ fontSize: 13, color: "var(--color-fg2)", marginBottom: 20 }}>
-        The error has been logged. You can try again, or go back and retry what you were doing.
+        Please try again. If the problem continues, contact your administrator.
       </div>
       <button
         onClick={() => reset()}

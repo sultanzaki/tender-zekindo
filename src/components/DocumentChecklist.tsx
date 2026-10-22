@@ -65,6 +65,7 @@ export function DocumentChecklist({
         <div key={doc.documentTypeId} className={styles.row}>
           <input
             type="checkbox"
+            aria-label={doc.label}
             className={styles.checkbox}
             checked={doc.checked}
             disabled={!isAdmin || isPending}
@@ -86,7 +87,7 @@ export function DocumentChecklist({
             isAdmin && (
               <label className={styles.uploadLabel}>
                 Upload
-                <input type="file" onChange={(e) => handleFileChange(doc.documentTypeId, e.target.files?.[0])} />
+                <input type="file" disabled={isPending} onChange={(e) => { handleFileChange(doc.documentTypeId, e.target.files?.[0]); e.target.value = ""; }} />
               </label>
             )
           )}
@@ -102,6 +103,7 @@ export function DocumentChecklist({
                 value={newLabel}
                 onChange={(e) => setNewLabel(e.target.value)}
                 placeholder="New document type name"
+                aria-label="New document type name"
                 autoFocus
               />
               <button className={styles.addButton} onClick={handleAddType} disabled={isPending || !newLabel.trim()}>
@@ -125,7 +127,7 @@ export function DocumentChecklist({
         </>
       )}
 
-      {error && <div className={styles.error}>{error}</div>}
+      {error && <div role="alert" className={styles.error}>{error}</div>}
     </div>
   );
 }

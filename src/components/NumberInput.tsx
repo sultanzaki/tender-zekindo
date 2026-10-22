@@ -4,11 +4,13 @@ import { useState } from "react";
 
 function formatDigits(digits: string): string {
   if (!digits) return "";
-  return Number(digits).toLocaleString("id-ID");
+  const [whole, fraction] = digits.split(".");
+  const grouped = BigInt(whole || "0").toLocaleString("id-ID");
+  return fraction === undefined ? grouped : `${grouped},${fraction}`;
 }
 
-/** Plain-digit numeric input that shows a thousands-separated value while
- * not focused, and the raw digits while being typed into (avoids the
+/** Decimal input that preserves fractions and shows a grouped value while
+ * not focused, and a dot-decimal value while being typed into (avoids the
  * cursor-jump bugs that come from formatting on every keystroke). */
 export function NumberInput({
   value,
@@ -22,17 +24,20 @@ export function NumberInput({
   placeholder?: string;
 }) {
   const [focused, setFocused] = useState(false);
-  const digits = value.replace(/[^0-9]/g, "");
+  const digits = value;
 
   return (
     <input
       className={className}
       placeholder={placeholder}
-      inputMode="numeric"
+      inputMode="decimal"
       value={focused ? digits : formatDigits(digits)}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
-      onChange={(e) => onChange(e.target.value.replace(/[^0-9]/g, ""))}
+      onChange={(e) => {
+        const next = e.target.value.replace(",", ".");
+        if (/^\d*(\.\d*)?$/.test(next)) onChange(next);
+      }}
     />
   );
 }
