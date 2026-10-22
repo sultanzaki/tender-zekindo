@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import { requireUser } from "@/lib/auth/dal";
+import { getAuthContext } from "@/lib/auth/dal";
 import { getAllTenders } from "@/lib/tenders";
 import { getMilestoneTypes } from "@/lib/milestones";
 import { filterTenders } from "@/lib/tender-logic";
@@ -13,8 +13,8 @@ export const dynamic = "force-dynamic";
 const msKey = (key: string) => `ms_${key}`;
 
 export async function GET(request: Request) {
-  const ctx = await requireUser();
-  const isAdmin = ctx.profile.role === "admin";
+  const ctx = await getAuthContext();
+  const isAdmin = ctx?.profile.role === "admin";
 
   const { searchParams } = new URL(request.url);
   const track = trackFromParam(searchParams.get("track"));
@@ -91,6 +91,7 @@ export async function GET(request: Request) {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "Content-Disposition": `attachment; filename="${filename}"`,
+      "Cache-Control": "private, no-store",
     },
   });
 }
