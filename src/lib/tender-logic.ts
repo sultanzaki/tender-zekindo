@@ -1,4 +1,11 @@
-import { DOWNSTREAM_MILESTONE_DEFS, MILESTONE_DEFS, type MilestoneType, type Milestones, type Tender, type Track } from "./types";
+import {
+  DOWNSTREAM_MILESTONE_DEFS,
+  MILESTONE_DEFS,
+  type MilestoneType,
+  type Milestones,
+  type Tender,
+  type Track,
+} from "./types";
 
 /** Mirrors DEFAULT_VISIBLE_COLUMNS in types.ts, i.e. which of the 12 built-in
  * milestones the tender table showed before milestones became dynamic. Used only
@@ -23,14 +30,16 @@ const TABLE_VISIBLE_BY_DEFAULT = new Set<string>([
  * `id` is set to the key here on purpose: this synthetic catalog only exists so
  * callers that haven't been migrated still work, and nothing in that path uses
  * the database uuid. */
-export const DEFAULT_MILESTONE_TYPES: MilestoneType[] = MILESTONE_DEFS.map((d, i) => ({
-  id: d.key,
-  key: d.key,
-  track: "upstream",
-  label: d.label,
-  sortOrder: (i + 1) * 10,
-  showInTable: TABLE_VISIBLE_BY_DEFAULT.has(d.key),
-}));
+export const DEFAULT_MILESTONE_TYPES: MilestoneType[] = MILESTONE_DEFS.map(
+  (d, i) => ({
+    id: d.key,
+    key: d.key,
+    track: "upstream",
+    label: d.label,
+    sortOrder: (i + 1) * 10,
+    showInTable: TABLE_VISIBLE_BY_DEFAULT.has(d.key),
+  }),
+);
 
 /** Which downstream milestones start visible in the tender table. Mirrors the
  * seed in migration 0009: the ones that mark process gates, so the table shows
@@ -43,19 +52,22 @@ const DOWNSTREAM_TABLE_VISIBLE_BY_DEFAULT = new Set<string>([
   "dsNegosiasi3",
 ]);
 
-export const DEFAULT_MILESTONE_TYPES_DOWNSTREAM: MilestoneType[] = DOWNSTREAM_MILESTONE_DEFS.map((d, i) => ({
-  id: d.key,
-  key: d.key,
-  track: "downstream",
-  label: d.label,
-  sortOrder: (i + 1) * 10,
-  showInTable: DOWNSTREAM_TABLE_VISIBLE_BY_DEFAULT.has(d.key),
-}));
+export const DEFAULT_MILESTONE_TYPES_DOWNSTREAM: MilestoneType[] =
+  DOWNSTREAM_MILESTONE_DEFS.map((d, i) => ({
+    id: d.key,
+    key: d.key,
+    track: "downstream",
+    label: d.label,
+    sortOrder: (i + 1) * 10,
+    showInTable: DOWNSTREAM_TABLE_VISIBLE_BY_DEFAULT.has(d.key),
+  }));
 
 /** The built-in catalog for one track — the fallback when the database catalog
  * cannot be read. */
 export function defaultMilestoneTypes(track: Track): MilestoneType[] {
-  return track === "downstream" ? DEFAULT_MILESTONE_TYPES_DOWNSTREAM : DEFAULT_MILESTONE_TYPES;
+  return track === "downstream"
+    ? DEFAULT_MILESTONE_TYPES_DOWNSTREAM
+    : DEFAULT_MILESTONE_TYPES;
 }
 
 /** Both tracks' catalogs, keyed by track.
@@ -77,19 +89,26 @@ export interface TenderMilestone {
  *
  * `tender.milestoneOrder === null` means "no per-tender override" -> use the
  * catalog's default order and show every milestone in it. A non-empty array
- * means this tender uses exactly those keys, in that order; anything the
- * catalog has but the array omits is hidden for this tender (its date, if any,
- * stays in `tenders.milestones` — see migration 0006). */
-export function resolveTenderMilestones(tender: Tender, catalog?: MilestoneCatalog): TenderMilestone[] {
+ * means this tender uses exactly those keys, in that order; an empty array
+ * selects no milestones. Hidden dates stay in `tenders.milestones`. */
+export function resolveTenderMilestones(
+  tender: Tender,
+  catalog?: MilestoneCatalog,
+): TenderMilestone[] {
   const forTrack = catalog?.[tender.track];
-  const types = forTrack && forTrack.length ? forTrack : defaultMilestoneTypes(tender.track);
+  const types = forTrack ?? defaultMilestoneTypes(tender.track);
   const order = tender.milestoneOrder;
-  const chosen = order && order.length
-    ? order
-        .map((key) => types.find((m) => m.key === key))
-        .filter((m): m is MilestoneType => !!m)
-    : types;
-  return chosen.map((m) => ({ key: m.key, label: m.label, date: tender.milestones[m.key] ?? null }));
+  const chosen =
+    order !== null && order !== undefined
+      ? order
+          .map((key) => types.find((m) => m.key === key))
+          .filter((m): m is MilestoneType => !!m)
+      : types;
+  return chosen.map((m) => ({
+    key: m.key,
+    label: m.label,
+    date: tender.milestones[m.key] ?? null,
+  }));
 }
 
 const MONTHS_EN = [
@@ -107,8 +126,13 @@ const MONTHS_EN = [
   "Dec",
 ];
 
-export function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+export function todayISO(now = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
 }
 
 export function formatDateID(iso: string | null | undefined): string | null {
@@ -125,8 +149,8 @@ export function formatRupiah(n: number | string | null | undefined): string {
 }
 
 export function daysBetween(iso: string, anchor: string): number {
-  const a = new Date(iso + "T00:00:00");
-  const b = new Date(anchor + "T00:00:00");
+  const a = new Date(iso + "T00:00:00Z");
+  const b = new Date(anchor + "T00:00:00Z");
   return Math.round((a.getTime() - b.getTime()) / 86400000);
 }
 
@@ -136,7 +160,7 @@ export type DateTone = "empty" | "past" | "urgent" | "soon" | "normal";
 export function dateTone(
   iso: string | null | undefined,
   result: string | null | undefined,
-  anchor: string
+  anchor: string,
 ): DateTone {
   if (!iso) return "empty";
   const diff = daysBetween(iso, anchor);
@@ -158,7 +182,7 @@ export interface NextMilestone {
 export function nextMilestone(
   tender: Tender,
   anchor: string,
-  catalog?: MilestoneCatalog
+  catalog?: MilestoneCatalog,
 ): NextMilestone | null {
   let best: NextMilestone | null = null;
   for (const m of resolveTenderMilestones(tender, catalog)) {
@@ -181,6 +205,8 @@ export function resultTone(result: string | null | undefined): ResultTone {
 }
 
 export interface DeadlineRow {
+  dateIso: string;
+  milestoneKey: string;
   tenderId: string;
   days: number;
   daysLabel: string;
@@ -203,7 +229,11 @@ export const REMINDER_DAYS = 3;
  * this value too. */
 export const DUE_SOON_DAYS = 14;
 
-export function computeDeadlines(tenders: Tender[], anchor: string, catalog?: MilestoneCatalog): DeadlineRow[] {
+export function computeDeadlines(
+  tenders: Tender[],
+  anchor: string,
+  catalog?: MilestoneCatalog,
+): DeadlineRow[] {
   const rows: DeadlineRow[] = [];
   for (const t of tenders) {
     if (t.result) continue;
@@ -211,6 +241,8 @@ export function computeDeadlines(tenders: Tender[], anchor: string, catalog?: Mi
     if (nm && nm.diff <= DUE_SOON_DAYS) {
       rows.push({
         tenderId: t.id,
+        dateIso: nm.date,
+        milestoneKey: nm.key,
         days: nm.diff,
         daysLabel: nm.diff === 0 ? "D-0" : `D-${nm.diff}`,
         customer: t.customer || "—",
@@ -227,6 +259,7 @@ export function computeDeadlines(tenders: Tender[], anchor: string, catalog?: Mi
 }
 
 export interface StalledRow {
+  track: Track;
   tenderId: string;
   customer: string;
   product: string;
@@ -239,7 +272,11 @@ export interface StalledRow {
 
 /** Active (no result yet) tenders with no future-dated milestone left to
  * track — likely stuck waiting on a customer decision. */
-export function computeStalled(tenders: Tender[], anchor: string, catalog?: MilestoneCatalog): StalledRow[] {
+export function computeStalled(
+  tenders: Tender[],
+  anchor: string,
+  catalog?: MilestoneCatalog,
+): StalledRow[] {
   const rows: StalledRow[] = [];
   for (const t of tenders) {
     if (t.result) continue;
@@ -251,6 +288,7 @@ export function computeStalled(tenders: Tender[], anchor: string, catalog?: Mile
     }
     rows.push({
       tenderId: t.id,
+      track: t.track,
       customer: t.customer || "—",
       product: t.product || "—",
       area: t.area || "—",
@@ -260,30 +298,58 @@ export function computeStalled(tenders: Tender[], anchor: string, catalog?: Mile
       lastMilestoneDateIso: last?.date ?? null,
     });
   }
-  rows.sort((a, b) => (b.lastMilestoneDateIso || "").localeCompare(a.lastMilestoneDateIso || ""));
+  rows.sort((a, b) =>
+    (b.lastMilestoneDateIso || "").localeCompare(a.lastMilestoneDateIso || ""),
+  );
   return rows;
 }
 
-export const LOSS_CATEGORIES: { label: string; match: (r: string | null | undefined) => boolean; color: string }[] = [
-  { label: "Price Loss", match: (r) => r === "LOSS PRICE", color: "var(--zk-error)" },
-  { label: "Technical Loss", match: (r) => !!r && r.indexOf("LOSS TECHNICAL") === 0, color: "var(--zk-warning)" },
-  { label: "PQ Admin Loss", match: (r) => r === "LOSS PQ ADMIN", color: "var(--zk-gray-500)" },
-  { label: "Registration Loss", match: (r) => r === "LOSS REGIST", color: "var(--zk-gray-400)" },
+export const LOSS_CATEGORIES: {
+  label: string;
+  match: (r: string | null | undefined) => boolean;
+  color: string;
+}[] = [
+  {
+    label: "Price Loss",
+    match: (r) => r === "LOSS PRICE",
+    color: "var(--zk-error)",
+  },
+  {
+    label: "Technical Loss",
+    match: (r) => !!r && r.indexOf("LOSS TECHNICAL") === 0,
+    color: "var(--zk-warning)",
+  },
+  {
+    label: "PQ Admin Loss",
+    match: (r) => r === "LOSS PQ ADMIN",
+    color: "var(--zk-gray-500)",
+  },
+  {
+    label: "Registration Loss",
+    match: (r) => r === "LOSS REGIST",
+    color: "var(--zk-gray-400)",
+  },
 ];
 
 export function currentPeriod(periods: string[]): string {
   return periods[0] || "";
 }
 
-export function distinctSorted(values: (string | null | undefined)[]): string[] {
-  return [...new Set(values.filter((v): v is string => !!v))].sort((a, b) => a.localeCompare(b));
+export function distinctSorted(
+  values: (string | null | undefined)[],
+): string[] {
+  return [...new Set(values.filter((v): v is string => !!v))].sort((a, b) =>
+    a.localeCompare(b),
+  );
 }
 
-export function periodsSorted(periods: (string | null | undefined)[]): string[] {
+export function periodsSorted(
+  periods: (string | null | undefined)[],
+): string[] {
   return [...new Set(periods.filter((v): v is string => !!v))].sort((a, b) => {
     const yearA = parseInt(a.slice(0, 4), 10);
     const yearB = parseInt(b.slice(0, 4), 10);
-    return yearB - yearA;
+    return yearB - yearA || b.localeCompare(a, undefined, { numeric: true });
   });
 }
 
@@ -343,14 +409,29 @@ function getSortValue(t: Tender, key: SortKey): string | number | null {
 
 /** Nulls always sort last, regardless of direction — sensible default for a
  * "which of these still needs a date" table rather than a strict total order. */
-export function sortTenders(tenders: Tender[], key: SortKey, direction: SortDirection): Tender[] {
+export function sortTenders(
+  tenders: Tender[],
+  key: SortKey,
+  direction: SortDirection,
+): Tender[] {
   const withValue = tenders.map((t) => ({ t, v: getSortValue(t, key) }));
-  const known = withValue.filter((x) => x.v !== null && x.v !== undefined && x.v !== "");
-  const unknown = withValue.filter((x) => x.v === null || x.v === undefined || x.v === "");
+  const known = withValue.filter(
+    (x) => x.v !== null && x.v !== undefined && x.v !== "",
+  );
+  const unknown = withValue.filter(
+    (x) => x.v === null || x.v === undefined || x.v === "",
+  );
   known.sort((a, b) => {
     let cmp: number;
-    if (typeof a.v === "string" && typeof b.v === "string") cmp = a.v.localeCompare(b.v);
-    else cmp = (a.v as number) < (b.v as number) ? -1 : (a.v as number) > (b.v as number) ? 1 : 0;
+    if (typeof a.v === "string" && typeof b.v === "string")
+      cmp = a.v.localeCompare(b.v);
+    else
+      cmp =
+        (a.v as number) < (b.v as number)
+          ? -1
+          : (a.v as number) > (b.v as number)
+            ? 1
+            : 0;
     return direction === "asc" ? cmp : -cmp;
   });
   return [...known, ...unknown].map((x) => x.t);
@@ -364,14 +445,22 @@ export interface MilestoneOrderIssue {
 /** Flags milestone pairs entered out of their expected chronological order
  * (e.g. PQ dated before Registration). Advisory only — real tenders do
  * sometimes genuinely skip around, so callers should warn, not block. */
-export function findOutOfOrderMilestones(milestones: Milestones, catalog?: MilestoneType[]): MilestoneOrderIssue[] {
-  const types = catalog && catalog.length ? catalog : DEFAULT_MILESTONE_TYPES;
-  const dated = types.map((d) => ({ ...d, iso: milestones[d.key] })).filter((d) => d.iso);
+export function findOutOfOrderMilestones(
+  milestones: Milestones,
+  catalog?: MilestoneType[],
+): MilestoneOrderIssue[] {
+  const types = catalog ?? DEFAULT_MILESTONE_TYPES;
+  const dated = types
+    .map((d) => ({ ...d, iso: milestones[d.key] }))
+    .filter((d) => d.iso);
   const issues: MilestoneOrderIssue[] = [];
   for (let i = 0; i < dated.length; i++) {
     for (let j = i + 1; j < dated.length; j++) {
       if (dated[i].iso! > dated[j].iso!) {
-        issues.push({ earlierLabel: dated[j].label, laterLabel: dated[i].label });
+        issues.push({
+          earlierLabel: dated[i].label,
+          laterLabel: dated[j].label,
+        });
       }
     }
   }
@@ -382,34 +471,43 @@ export function findOutOfOrderMilestones(milestones: Milestones, catalog?: Miles
 export function findDuplicateTenderNo(
   tenderNo: string,
   tenders: { id: string; tenderNo: string | null }[],
-  excludeId?: string
+  excludeId?: string,
 ): boolean {
   const needle = tenderNo.trim().toLowerCase();
   if (!needle) return false;
-  return tenders.some((t) => t.id !== excludeId && (t.tenderNo || "").trim().toLowerCase() === needle);
+  return tenders.some(
+    (t) =>
+      t.id !== excludeId && (t.tenderNo || "").trim().toLowerCase() === needle,
+  );
 }
 
-export function filterTenders(tenders: Tender[], filters: {
-  period: string;
-  area: string;
-  entitas: string;
-  customer: string;
-  result: string;
-  search: string;
-}): Tender[] {
-  const search = (filters.search || "").toLowerCase();
+export function filterTenders(
+  tenders: Tender[],
+  filters: {
+    period: string;
+    area: string;
+    entitas: string;
+    customer: string;
+    result: string;
+    search: string;
+  },
+): Tender[] {
+  const search = (filters.search || "").trim().toLowerCase();
   return tenders.filter((t) => {
     if (filters.period !== "all" && t.period !== filters.period) return false;
     if (filters.area !== "all" && t.area !== filters.area) return false;
-    if (filters.entitas !== "all" && t.entitas !== filters.entitas) return false;
-    if (filters.customer !== "all" && t.customer !== filters.customer) return false;
+    if (filters.entitas !== "all" && t.entitas !== filters.entitas)
+      return false;
+    if (filters.customer !== "all" && t.customer !== filters.customer)
+      return false;
     if (filters.result === "__EMPTY__") {
       if (t.result) return false;
     } else if (filters.result !== "all" && t.result !== filters.result) {
       return false;
     }
     if (search) {
-      const hay = `${t.tenderNo || ""} ${t.product || ""}`.toLowerCase();
+      const hay =
+        `${t.tenderNo || ""} ${t.product || ""} ${t.customer || ""} ${t.area || ""} ${t.entitas || ""}`.toLowerCase();
       if (hay.indexOf(search) === -1) return false;
     }
     return true;

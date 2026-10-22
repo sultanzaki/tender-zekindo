@@ -14,7 +14,8 @@ const poppins = Poppins({
 
 export const metadata: Metadata = {
   title: "Tender Management — Zekindo",
-  description: "Monitoring and management of oil & gas tenders for PT Zeus Kimiatama Indonesia.",
+  description:
+    "Monitoring and management of oil & gas tenders for PT Zeus Kimiatama Indonesia.",
 };
 
 export const viewport: Viewport = {
@@ -22,7 +23,11 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const ctx = await getAuthContext();
 
   let notificationCount = 0;
@@ -41,8 +46,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en" className={poppins.variable}>
       <body>
-        <TopNav profile={ctx?.profile ?? null} notificationCount={notificationCount} />
-        {children}
+        <TopNav
+          profile={ctx?.profile ?? null}
+          notificationCount={notificationCount}
+        >
+          {children}
+        </TopNav>
       </body>
     </html>
   );

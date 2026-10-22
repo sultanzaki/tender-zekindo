@@ -1,6 +1,16 @@
 "use client";
 
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, LabelList, Cell } from "recharts";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  LabelList,
+  Cell,
+} from "recharts";
 import type { TooltipContentProps } from "recharts";
 import type { GroupWinRateRow } from "@/lib/analytics";
 import { CATEGORICAL, CHART_COLORS } from "./chartColors";
@@ -24,7 +34,13 @@ function CustomTooltip({ active, payload }: TooltipContentProps) {
  * Every bar is directly labeled with both the rate and its sample size
  * ("62% (n=13)") so a reader never has to guess how much to trust a bar —
  * winRateByGroup() has already dropped groups below the min sample size. */
-export function GroupWinRateChart({ data, emptyMessage }: { data: GroupWinRateRow[]; emptyMessage: string }) {
+export function GroupWinRateChart({
+  data,
+  emptyMessage,
+}: {
+  data: GroupWinRateRow[];
+  emptyMessage: string;
+}) {
   if (data.length === 0) {
     return (
       <div className={styles.chartWrap}>
@@ -37,7 +53,11 @@ export function GroupWinRateChart({ data, emptyMessage }: { data: GroupWinRateRo
   return (
     <div className={styles.chartWrap} style={{ height }}>
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={sorted} layout="vertical" margin={{ top: 4, right: 64, left: 4, bottom: 4 }}>
+        <BarChart
+          data={sorted}
+          layout="vertical"
+          margin={{ top: 4, right: 88, left: 4, bottom: 4 }}
+        >
           <CartesianGrid stroke={CHART_COLORS.grid} horizontal={false} />
           <XAxis
             type="number"
@@ -50,15 +70,30 @@ export function GroupWinRateChart({ data, emptyMessage }: { data: GroupWinRateRo
           <YAxis
             type="category"
             dataKey="group"
-            width={130}
+            width={110}
+            tickFormatter={(value: string) =>
+              value.length > 18 ? value.slice(0, 17) + "…" : value
+            }
             tick={{ fontSize: 12, fill: CHART_COLORS.fg1 }}
             axisLine={false}
             tickLine={false}
           />
-          <Tooltip content={CustomTooltip} cursor={{ fill: CHART_COLORS.grid, opacity: 0.4 }} />
-          <Bar dataKey="winRatePct" fill={CHART_COLORS.primary} maxBarSize={22} radius={[0, 4, 4, 0]}>
-            {data.map((entry, idx) => (
-              <Cell key={entry.group} fill={CATEGORICAL[idx % CATEGORICAL.length]} />
+          <Tooltip
+            content={CustomTooltip}
+            cursor={{ fill: CHART_COLORS.grid, opacity: 0.4 }}
+          />
+          <Bar
+            isAnimationActive={false}
+            dataKey="winRatePct"
+            fill={CHART_COLORS.primary}
+            maxBarSize={22}
+            radius={[0, 4, 4, 0]}
+          >
+            {sorted.map((entry, idx) => (
+              <Cell
+                key={entry.group}
+                fill={CATEGORICAL[idx % CATEGORICAL.length]}
+              />
             ))}
             <LabelList
               dataKey="winRatePct"

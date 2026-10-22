@@ -4,8 +4,15 @@ import { unstable_cache } from "next/cache";
 import { supabaseServer } from "./supabase-server";
 import type { TenderRow } from "./database.types";
 import type { FilterOptions, SelectOptionsMap, Tender, Track } from "./types";
-import { distinctSorted, periodsSorted } from "./tender-logic";
+import {
+  distinctSorted,
+  periodsSorted,
+  computeDeadlines,
+  computeStalled,
+  todayISO,
+} from "./tender-logic";
 import { getProfilesByIds } from "./users";
+import { getMilestoneCatalog } from "./milestones";
 import { rowTrack } from "./milestones";
 import { TENDERS_TAG } from "./cache-tags";
 
@@ -17,7 +24,7 @@ import { TENDERS_TAG } from "./cache-tags";
 function toNumber(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
-  return Number.isNaN(n) ? null : n;
+  return Number.isFinite(n) ? n : null;
 }
 
 function mapRow(row: TenderRow, names: Map<string, string>): Tender {
@@ -54,7 +61,9 @@ function mapRow(row: TenderRow, names: Map<string, string>): Tender {
 }
 
 async function withNames(rows: TenderRow[]): Promise<Tender[]> {
-  const ids = rows.flatMap((r) => [r.created_by, r.updated_by].filter((v): v is string => !!v));
+  const ids = rows.flatMap((r) =>
+    [r.created_by, r.updated_by].filter((v): v is string => !!v),
+  );
   const profiles = await getProfilesByIds(ids);
   const names = new Map<string, string>();
   profiles.forEach((p, id) => names.set(id, p.name));
@@ -72,14 +81,23 @@ async function withNames(rows: TenderRow[]): Promise<Tender[]> {
 // (e.g. SQL pasted straight into the Supabase editor).
 const getTendersCached = unstable_cache(
   async (includeArchived: boolean, track: Track | "all"): Promise<Tender[]> => {
-    let query = supabaseServer().from("tenders").select("*").order("row_no", { ascending: true });
-    if (!includeArchived) query = query.is("archived_at", null);
-    // "all" is what the screens that span both tracks ask for: /notifications,
-    // the nav badge path and the analytics "both" option.
-    if (track !== "all") query = query.eq("track", track);
-    const { data, error } = await query;
-    if (error) throw new Error(`Failed to load tenders: ${error.message}`);
-    return withNames(data ?? []);
+    const rows: TenderRow[] = [];
+    const batch = 1000;
+    for (let offset = 0; ; offset += batch) {
+      let query = supabaseServer()
+        .from("tenders")
+        .select("*")
+        .order("row_no", { ascending: true })
+        .order("id", { ascending: true })
+        .range(offset, offset + batch - 1);
+      if (!includeArchived) query = query.is("archived_at", null);
+      if (track !== "all") query = query.eq("track", track);
+      const { data, error } = await query;
+      if (error) throw new Error(`Failed to load tenders: ${error.message}`);
+      rows.push(...(data ?? []));
+      if (!data || data.length < batch) break;
+    }
+    return withNames(rows);
   },
   ["tenders:list"],
   { tags: [TENDERS_TAG], revalidate: 30 },
@@ -87,8 +105,14 @@ const getTendersCached = unstable_cache(
 
 // `cache()` on top so several components in one render share a single lookup.
 export const getAllTenders = cache(
-  async (options?: { includeArchived?: boolean; track?: Track | "all" }): Promise<Tender[]> =>
-    getTendersCached(Boolean(options?.includeArchived), options?.track ?? "all"),
+  async (options?: {
+    includeArchived?: boolean;
+    track?: Track | "all";
+  }): Promise<Tender[]> =>
+    getTendersCached(
+      Boolean(options?.includeArchived),
+      options?.track ?? "all",
+    ),
 );
 
 export interface NotificationCounts {
@@ -100,25 +124,18 @@ export interface NotificationCounts {
   stalled: number;
 }
 
-/**
- * The numbers behind the nav bell, counted in Postgres rather than by pulling
- * every tender across the wire — see
- * supabase/migrations/0008_milestone_reminders.sql for the equivalence with
- * computeDeadlines()/computeStalled(), including the per-tender
- * `milestone_order` override.
- *
- * Deliberately NOT wrapped in unstable_cache: after this it is a single cheap
- * round trip, and skipping the cache keeps the badge exact rather than
- * up-to-30s stale.
- */
+/** Reuses the cached tender/catalog reads and the same WIB date and schedule
+ * rules as Overview and Deadlines, including an explicitly empty schedule. */
 export async function getNotificationCounts(): Promise<NotificationCounts> {
-  const { data, error } = await supabaseServer().rpc("notification_counts");
-  if (error) throw new Error(`Failed to load notification counts: ${error.message}`);
-  const row = data?.[0];
+  const [tenders, catalog] = await Promise.all([
+    getAllTenders(),
+    getMilestoneCatalog(),
+  ]);
+  const deadlines = computeDeadlines(tenders, todayISO(), catalog);
   return {
-    dueH3: row?.due_h3 ?? 0,
-    dueSoon: row?.due_soon ?? 0,
-    stalled: row?.stalled ?? 0,
+    dueH3: deadlines.filter((d) => d.days <= 3).length,
+    dueSoon: deadlines.length,
+    stalled: computeStalled(tenders, todayISO(), catalog).length,
   };
 }
 
@@ -128,12 +145,17 @@ export async function getArchivedTenders(): Promise<Tender[]> {
     .select("*")
     .not("archived_at", "is", null)
     .order("archived_at", { ascending: false });
-  if (error) throw new Error(`Failed to load archived tenders: ${error.message}`);
+  if (error)
+    throw new Error(`Failed to load archived tenders: ${error.message}`);
   return withNames(data ?? []);
 }
 
 export async function getTenderById(id: string): Promise<Tender | null> {
-  const { data, error } = await supabaseServer().from("tenders").select("*").eq("id", id).maybeSingle();
+  const { data, error } = await supabaseServer()
+    .from("tenders")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
   if (error) throw new Error(`Failed to load tender: ${error.message}`);
   if (!data) return null;
   const [tender] = await withNames([data]);
@@ -152,8 +174,12 @@ export function getFilterOptions(tenders: Tender[]): FilterOptions {
 /** Dropdown options for every extendable field (Area, Customer, Entity):
  * existing tender values plus anything an admin added via
  * addSelectOption(), even if no tender uses it yet. */
-export async function getSelectOptions(tenders: Tender[]): Promise<SelectOptionsMap> {
-  const { data, error } = await supabaseServer().from("select_options").select("field, value");
+export async function getSelectOptions(
+  tenders: Tender[],
+): Promise<SelectOptionsMap> {
+  const { data, error } = await supabaseServer()
+    .from("select_options")
+    .select("field, value");
   if (error) throw new Error(`Failed to load select options: ${error.message}`);
 
   const fromOptions: Record<string, string[]> = {};
@@ -162,8 +188,17 @@ export async function getSelectOptions(tenders: Tender[]): Promise<SelectOptions
   }
 
   return {
-    area: distinctSorted([...tenders.map((t) => t.area), ...(fromOptions.area ?? [])]),
-    customer: distinctSorted([...tenders.map((t) => t.customer), ...(fromOptions.customer ?? [])]),
-    entitas: distinctSorted([...tenders.map((t) => t.entitas), ...(fromOptions.entitas ?? [])]),
+    area: distinctSorted([
+      ...tenders.map((t) => t.area),
+      ...(fromOptions.area ?? []),
+    ]),
+    customer: distinctSorted([
+      ...tenders.map((t) => t.customer),
+      ...(fromOptions.customer ?? []),
+    ]),
+    entitas: distinctSorted([
+      ...tenders.map((t) => t.entitas),
+      ...(fromOptions.entitas ?? []),
+    ]),
   };
 }

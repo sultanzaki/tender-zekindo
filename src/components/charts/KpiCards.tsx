@@ -1,4 +1,4 @@
-import { formatRupiah } from "@/lib/tender-logic";
+import { formatCompactRupiah } from "@/lib/analytics";
 import styles from "./charts.module.css";
 
 export interface KpiData {
@@ -18,14 +18,18 @@ export function KpiCards({ data }: { data: KpiData }) {
       {!data.hidePipeline && (
         <div className={styles.kpiCard}>
           <div className={styles.kpiLabel}>Pipeline Value</div>
-          <div className={styles.kpiValue}>{formatRupiah(data.pipelineValue)}</div>
-          <div className={styles.kpiCaption}>Sum of OE for running tenders</div>
+          <div className={styles.kpiValue}>
+            {formatCompactRupiah(data.pipelineValue)}
+          </div>
+          <div className={styles.kpiCaption}>Known OE of active tenders</div>
         </div>
       )}
       <div className={styles.kpiCard}>
         <div className={styles.kpiLabel}>Win Value</div>
-        <div className={styles.kpiValue}>{formatRupiah(data.winValue)}</div>
-        <div className={styles.kpiCaption}>Sum of bid value for WIN tenders</div>
+        <div className={styles.kpiValue}>
+          {formatCompactRupiah(data.winValue)}
+        </div>
+        <div className={styles.kpiCaption}>Known bid value of won tenders</div>
       </div>
       <div className={styles.kpiCard}>
         <div className={styles.kpiLabel}>Running Tenders</div>
@@ -33,8 +37,10 @@ export function KpiCards({ data }: { data: KpiData }) {
         <div className={styles.kpiCaption}>No result recorded yet</div>
       </div>
       <div className={styles.kpiCard}>
-        <div className={styles.kpiLabel}>Win Rate (All-Time)</div>
-        <div className={styles.kpiValue}>{data.winRatePct !== null ? `${data.winRatePct}%` : "—"}</div>
+        <div className={styles.kpiLabel}>Win Rate</div>
+        <div className={styles.kpiValue}>
+          {data.winRatePct !== null ? `${data.winRatePct}%` : "—"}
+        </div>
         <div className={styles.kpiCaption}>
           {data.winCount} won of {data.decidedCount} decided
         </div>

@@ -16,7 +16,7 @@ export function TrackSwitch({
   params = {},
   param = "track",
 }: {
-  current: Track;
+  current: Track | "all";
   /** e.g. "/tenders" — needed to build a clean URL when no other filter is set. */
   basePath: string;
   params?: Record<string, string | undefined>;
@@ -25,7 +25,7 @@ export function TrackSwitch({
   return (
     <nav className={styles.bar} aria-label="Upstream or downstream">
       <div className={styles.group}>
-        {TRACKS.map((track) => {
+        {(["all", ...TRACKS] as const).map((track) => {
           const query = new URLSearchParams();
           for (const [key, value] of Object.entries(params)) {
             if (value && key !== param) query.set(key, value);
@@ -40,7 +40,7 @@ export function TrackSwitch({
               className={active ? styles.active : styles.item}
               aria-current={active ? "page" : undefined}
             >
-              {TRACK_LABELS[track]}
+              {track === "all" ? "All tenders" : TRACK_LABELS[track]}
             </Link>
           );
         })}

@@ -1,322 +1,106 @@
 "use client";
-
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   createDocumentFolder,
+  renameDocumentFolder,
   deleteDocumentFolder,
   deleteTenderFile,
-  renameDocumentFolder,
   prepareFileUpload,
   completeFileUpload,
+  cancelPreparedUploads,
   type FileTarget,
 } from "@/lib/folder-actions";
-import type { DocumentFile, DocumentSection, DocumentTreeNode } from "@/lib/types";
-
-function formatSize(bytes: number | null) {
+import type {
+  DocumentFile,
+  DocumentSection,
+  DocumentTreeNode,
+} from "@/lib/types";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_FILES } from "@/lib/upload-policy";
+import { Modal } from "./Modal";
+import styles from "./DocumentExplorer.module.css";
+function size(bytes: number | null) {
   if (bytes === null) return "";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return bytes < 1024 * 1024
+    ? `${Math.ceil(bytes / 1024)} KB`
+    : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
-
-/* ── Upload progress bar ────────────────────────────────── */
-function UploadProgressBar({
-  phase,
-  pct,
-  currentFile,
-  totalBytes,
-  uploadedBytes,
-}: {
-  phase: string;
-  pct: number;
-  currentFile: string;
-  totalBytes: number;
-  uploadedBytes: number;
-}) {
-  const label =
-    phase === "preparing"
-      ? "Menyiapkan…"
-      : phase === "uploading"
-        ? `Mengupload ${currentFile}…`
-        : phase === "finalizing"
-          ? "Menyimpan…"
-          : phase === "done"
-            ? "Selesai ✓"
-            : "";
-
-  if (phase === "idle" || phase === "error") return null;
-
-  return (
-    <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 8, background: "#f1f5f9" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#334155", marginBottom: 4 }}>
-        <span>{label}</span>
-        <span>{Math.round(pct)}%</span>
-      </div>
-      <div
-        role="progressbar"
-        aria-label="File upload"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={Math.round(pct)}
-        style={{
-          height: 8,
-          borderRadius: 4,
-          background: "#e2e8f0",
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            height: "100%",
-            width: `${pct}%`,
-            borderRadius: 4,
-            background: phase === "done" ? "#16a34a" : "#2563eb",
-            transition: "width 0.3s ease",
-          }}
-        />
-      </div>
-      {totalBytes > 0 && (
-        <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
-          {formatSize(uploadedBytes)} / {formatSize(totalBytes)}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── Folder branch ──────────────────────────────────────── */
-function FolderBranch({
-  node,
-  depth,
-  isAdmin,
+type Intent =
+  | { action: "create"; target: FileTarget }
+  | { action: "rename"; id: string; name: string }
+  | { action: "delete-folder" | "delete-file"; id: string; name: string };
+function UploadButton({
   busy,
-  onUpload,
-  onNewFolder,
-  onRename,
-  onDeleteFolder,
-  onDeleteFile,
+  onFiles,
 }: {
-  node: DocumentTreeNode;
-  depth: number;
-  isAdmin: boolean;
   busy: boolean;
-  onUpload: (folderId: string, files: FileList | null) => void;
-  onNewFolder: (parentId: string, name: string) => void;
-  onRename: (folderId: string, name: string) => void;
-  onDeleteFolder: (folderId: string, name: string) => void;
-  onDeleteFile: (fileId: string, name: string) => void;
+  onFiles: (files: FileList) => void;
 }) {
-  const [open, setOpen] = useState(true);
-  const [adding, setAdding] = useState(false);
-  const [name, setName] = useState("");
-  const [renaming, setRenaming] = useState(false);
-  const [newName, setNewName] = useState(node.folder.name);
-
-  const count = node.files.length + node.children.length;
-
+  const input = useRef<HTMLInputElement>(null);
   return (
-    <div style={{ marginLeft: depth === 0 ? 0 : 16 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 0" }}>
-        <button
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          style={{ border: "none", background: "none", cursor: "pointer", width: 16, padding: 0, color: "inherit" }}
-          title={open ? "Collapse" : "Expand"}
-          aria-label={`${open ? "Collapse" : "Expand"} ${node.folder.name}`}
-          aria-expanded={open}
-        >
-          {open ? "▾" : "▸"}
-        </button>
-        <span style={{ fontSize: 13 }}>📁</span>
-
-        {renaming ? (
-          <>
-            <input
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              autoFocus
-              style={{ flex: 1, fontSize: 13, padding: "2px 6px" }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && newName.trim()) {
-                  onRename(node.folder.id, newName.trim());
-                  setRenaming(false);
-                }
-                if (e.key === "Escape") setRenaming(false);
-              }}
-            />
-            <button
-              type="button"
-              style={{ fontSize: 12 }}
-              disabled={busy || !newName.trim()}
-              onClick={() => {
-                onRename(node.folder.id, newName.trim());
-                setRenaming(false);
-              }}
-            >
-              Save
-            </button>
-          </>
-        ) : (
-          <>
-            <span style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{node.folder.name}</span>
-            <span style={{ fontSize: 11, opacity: 0.55 }}>{count ? `${count} item` : "kosong"}</span>
-            {isAdmin && (
-              <>
-                <label style={{ fontSize: 11.5, cursor: "pointer", textDecoration: "underline" }}>
-                  Upload
-                  <input
-                    type="file"
-                    multiple
-                    style={{ display: "none" }}
-                    disabled={busy}
-                    onChange={(e) => {
-                      onUpload(node.folder.id, e.target.files);
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
-                <button type="button" style={{ fontSize: 11.5 }} disabled={busy} onClick={() => setAdding(true)}>
-                  + Subfolder
-                </button>
-                <button type="button" style={{ fontSize: 11.5 }} disabled={busy} onClick={() => setRenaming(true)}>
-                  Rename
-                </button>
-                <button
-                  type="button"
-                  style={{ fontSize: 11.5 }}
-                  disabled={busy}
-                  onClick={() => onDeleteFolder(node.folder.id, node.folder.name)}
-                >
-                  Hapus
-                </button>
-              </>
-            )}
-          </>
-        )}
-      </div>
-
-      {open && (
-        <div>
-          {adding && (
-            <div style={{ display: "flex", gap: 6, marginLeft: 32, padding: "3px 0" }}>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Nama subfolder"
-                autoFocus
-                style={{ flex: 1, fontSize: 12.5, padding: "2px 6px" }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && name.trim()) {
-                    onNewFolder(node.folder.id, name.trim());
-                    setName("");
-                    setAdding(false);
-                  }
-                  if (e.key === "Escape") setAdding(false);
-                }}
-              />
-              <button
-                type="button"
-                style={{ fontSize: 12 }}
-                disabled={busy || !name.trim()}
-                onClick={() => {
-                  onNewFolder(node.folder.id, name.trim());
-                  setName("");
-                  setAdding(false);
-                }}
-              >
-                Add
-              </button>
-            </div>
-          )}
-
-          {node.files.map((file) => (
-            <FileRow key={file.id} file={file} depth={depth + 1} isAdmin={isAdmin} busy={busy} onDelete={onDeleteFile} />
-          ))}
-
-          {node.children.map((child) => (
-            <FolderBranch
-              key={child.folder.id}
-              node={child}
-              depth={depth + 1}
-              isAdmin={isAdmin}
-              busy={busy}
-              onUpload={onUpload}
-              onNewFolder={onNewFolder}
-              onRename={onRename}
-              onDeleteFolder={onDeleteFolder}
-              onDeleteFile={onDeleteFile}
-            />
-          ))}
-
-          {!adding && !node.files.length && !node.children.length && (
-            <div style={{ marginLeft: 32, fontSize: 12, opacity: 0.5 }}>Folder kosong</div>
-          )}
-        </div>
-      )}
-    </div>
+    <>
+      <button
+        className="button button-secondary"
+        type="button"
+        disabled={busy}
+        onClick={() => input.current?.click()}
+      >
+        Upload files
+      </button>
+      <input
+        ref={input}
+        type="file"
+        multiple
+        hidden
+        disabled={busy}
+        onChange={(e) => {
+          if (e.target.files) onFiles(e.target.files);
+          e.target.value = "";
+        }}
+      />
+    </>
   );
 }
-
-/* ── File row ───────────────────────────────────────────── */
-function FileRow({
-  file,
-  depth,
+function Files({
+  files,
   isAdmin,
   busy,
   onDelete,
 }: {
-  file: DocumentFile;
-  depth: number;
+  files: DocumentFile[];
   isAdmin: boolean;
   busy: boolean;
-  onDelete: (fileId: string, name: string) => void;
+  onDelete: (file: DocumentFile) => void;
 }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 0", marginLeft: depth === 0 ? 0 : 32 }}>
-      <span style={{ fontSize: 12, opacity: 0.5 }}>📄</span>
-      {file.fileUrl ? (
-        <a
-          href={file.fileUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ flex: 1, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-          title={file.fileName}
-        >
-          {file.fileName}
-        </a>
-      ) : (
-        <span style={{ flex: 1, fontSize: 12.5 }} title="Signed URL gagal dibuat">
-          {file.fileName}
-        </span>
-      )}
-      <span style={{ fontSize: 11, opacity: 0.5 }}>{formatSize(file.sizeBytes)}</span>
-      {isAdmin && (
-        <button type="button" style={{ fontSize: 11.5 }} disabled={busy} onClick={() => onDelete(file.id, file.fileName)}>
-          Hapus
-        </button>
-      )}
-    </div>
+    <>
+      {files.map((file) => (
+        <div key={file.id} className={styles.file}>
+          {file.fileUrl ? (
+            <a href={file.fileUrl} target="_blank" rel="noopener noreferrer">
+              {file.fileName}
+            </a>
+          ) : (
+            <span>
+              {file.fileName} <small>Link unavailable; refresh to retry.</small>
+            </span>
+          )}
+          <small>{size(file.sizeBytes)}</small>
+          {isAdmin && (
+            <button
+              disabled={busy}
+              type="button"
+              aria-label={`Delete ${file.fileName}`}
+              onClick={() => onDelete(file)}
+            >
+              Delete
+            </button>
+          )}
+        </div>
+      ))}
+    </>
   );
 }
-
-/* ── Upload progress state ──────────────────────────────── */
-interface UploadProgress {
-  phase: "idle" | "preparing" | "uploading" | "finalizing" | "done" | "error";
-  pct: number;
-  currentFile: string;
-  totalBytes: number;
-  uploadedBytes: number;
-}
-
-const IDLE_UPLOAD: UploadProgress = {
-  phase: "idle",
-  pct: 0,
-  currentFile: "",
-  totalBytes: 0,
-  uploadedBytes: 0,
-};
-
-/* ── Main explorer ──────────────────────────────────────── */
 export function DocumentExplorer({
   tenderId,
   sections,
@@ -326,272 +110,405 @@ export function DocumentExplorer({
   sections: DocumentSection[];
   isAdmin: boolean;
 }) {
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [addingRoot, setAddingRoot] = useState<string | null>(null);
-  const [rootName, setRootName] = useState("");
-  const [upload, setUpload] = useState<UploadProgress>(IDLE_UPLOAD);
-
-  function run(fn: () => Promise<unknown>) {
-    setError(null);
-    startTransition(async () => {
-      const result = (await fn()) as { error?: string } | undefined;
-      if (result?.error) setError(result.error);
-    });
-  }
-
+  const router = useRouter();
+  const container = useRef<HTMLDivElement>(null);
+  const [query, setQuery] = useState("");
+  const [intent, setIntent] = useState<Intent | null>(null);
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [pending, start] = useTransition();
+  const [upload, setUpload] = useState<{ name: string; pct: number } | null>(
+    null,
+  );
+  const busy = pending || upload !== null;
   function target(section: DocumentSection): FileTarget {
     return {
       milestoneKey: section.milestoneKey,
       documentTypeId: section.documentTypeId,
     };
   }
-
-  function isBusy() {
-    return pending || upload.phase !== "idle";
+  function open(next: Intent) {
+    setError("");
+    setIntent(next);
+    setName(next.action === "rename" ? next.name : "");
   }
-
-  async function handleUpload(section: DocumentSection, rawFiles: FileList | null, folderId?: string) {
-    if (!rawFiles || !rawFiles.length) return;
-    setError(null);
-
-    try {
-      const files = Array.from(rawFiles);
-      const totalBytes = files.reduce((s, f) => s + f.size, 0);
-      setUpload({
-        phase: "preparing",
-        pct: 0,
-        currentFile: files[0]?.name || "",
-        totalBytes,
-        uploadedBytes: 0,
-      });
-
-      // 1. Get signed upload URLs from server
-      const target_ = { ...target(section), folderId: folderId ?? null };
-      const prep = await prepareFileUpload(
-        tenderId,
-        target_,
-        files.map((f) => ({ name: f.name, size: f.size, type: f.type }))
-      );
-      if ("error" in prep) {
-        setError(prep.error!);
-        setUpload(IDLE_UPLOAD);
-        return;
-      }
-
-      // 2. Upload each file directly to Supabase via XHR
-      setUpload((u) => ({ ...u, phase: "uploading" }));
-      let uploadedBytes = 0;
-      const uploaded: { path: string; fileName: string; size: number; contentType: string | null }[] = [];
-
-      for (const item of prep.uploads) {
-        const file = files[item.index];
-        if (!file) continue;
-
-        setUpload((u) => ({ ...u, currentFile: item.fileName }));
-
-        try {
-          await new Promise<void>((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-            xhr.upload.onprogress = (e) => {
-              if (!e.lengthComputable) return;
-              const fileLoaded = uploadedBytes + e.loaded;
-              const pct = (fileLoaded / totalBytes) * 100;
-              setUpload((u) => ({ ...u, pct, uploadedBytes: fileLoaded }));
-            };
-            xhr.onload = () => {
-              if (xhr.status >= 200 && xhr.status < 300) {
-                uploadedBytes += file.size;
-                setUpload((u) => ({ ...u, uploadedBytes }));
-                uploaded.push({
-                  path: item.path,
-                  fileName: item.fileName,
-                  size: file.size,
-                  contentType: file.type || null,
-                });
-                resolve();
-              } else {
-                reject(new Error(`Upload gagal (HTTP ${xhr.status})`));
-              }
-            };
-            xhr.timeout = 120000;
-            xhr.ontimeout = () => reject(new Error("Upload timed out. Please try again."));
-            xhr.onabort = () => reject(new Error("Upload canceled."));
-            xhr.onerror = () => reject(new Error("Gagal terhubung ke storage."));
-            xhr.open("PUT", item.signedUrl);
-            xhr.setRequestHeader("Content-Type", item.contentType);
-            xhr.send(file);
-          });
-        } catch (err) {
-          setError(err instanceof Error ? err.message : "Upload gagal.");
-          setUpload(IDLE_UPLOAD);
+  function execute() {
+    if (!intent) return;
+    const next = intent;
+    setError("");
+    start(async () => {
+      try {
+        const result = await (next.action === "create"
+          ? createDocumentFolder(tenderId, name, next.target)
+          : next.action === "rename"
+            ? renameDocumentFolder(next.id, name)
+            : next.action === "delete-file"
+              ? deleteTenderFile(next.id)
+              : deleteDocumentFolder(next.id));
+        if (result && "error" in result && result.error) {
+          setError(result.error);
           return;
         }
+        setIntent(null);
+        setNotice("Document workspace updated.");
+      } catch {
+        setError("The change could not be saved. Please try again.");
       }
-
-      // 3. Register files in database
-      setUpload((u) => ({ ...u, phase: "finalizing", pct: 100 }));
-      const result = await completeFileUpload(tenderId, target_, uploaded);
-      if (result?.error) {
-        setError(result.error);
-        setUpload(IDLE_UPLOAD);
-        return;
+    });
+  }
+  async function handleUpload(where: FileTarget, raw: FileList) {
+    if (busy || !raw.length) return;
+    const files = Array.from(raw);
+    setError("");
+    setNotice("");
+    if (
+      files.length > MAX_UPLOAD_FILES ||
+      files.some((f) => !f.size || f.size > MAX_UPLOAD_BYTES)
+    ) {
+      setError(
+        "Choose up to 50 non-empty files, with a maximum of 5 MB per file.",
+      );
+      return;
+    }
+    let prepared: string[] = [];
+    let registered = false;
+    try {
+      setUpload({ name: "Preparing files…", pct: 0 });
+      const prep = await prepareFileUpload(
+        tenderId,
+        where,
+        files.map((f) => ({ name: f.name, size: f.size, type: f.type })),
+      );
+      if ("error" in prep) throw new Error(prep.error);
+      prepared = prep.uploads.map((item) => item.path);
+      const uploaded = [];
+      const total = files.reduce((sum, f) => sum + f.size, 0);
+      let sent = 0;
+      for (const item of prep.uploads) {
+        const file = files[item.index];
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("PUT", item.signedUrl);
+          xhr.setRequestHeader("Content-Type", item.contentType);
+          xhr.timeout = 120000;
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable)
+              setUpload({
+                name: file.name,
+                pct: Math.min(98, Math.round(((sent + e.loaded) / total) * 98)),
+              });
+          };
+          xhr.onload = () =>
+            xhr.status >= 200 && xhr.status < 300
+              ? resolve()
+              : reject(new Error(`Upload failed (HTTP ${xhr.status}).`));
+          xhr.onerror = () =>
+            reject(
+              new Error("Could not reach storage. Check your connection."),
+            );
+          xhr.ontimeout = () =>
+            reject(new Error("Upload timed out. Please try again."));
+          xhr.onabort = () => reject(new Error("Upload canceled."));
+          xhr.send(file);
+        });
+        sent += file.size;
+        uploaded.push({
+          path: item.path,
+          fileName: file.name,
+          size: file.size,
+          contentType: file.type || null,
+        });
       }
-
-      // 4. Done
-      setUpload({ phase: "done", pct: 100, currentFile: "", totalBytes, uploadedBytes });
-      setTimeout(() => setUpload(IDLE_UPLOAD), 2500);
-    } catch {
-      setError("Upload failed. Please check your connection and try again.");
-      setUpload(IDLE_UPLOAD);
+      setUpload({ name: "Saving file records…", pct: 99 });
+      const result = await completeFileUpload(tenderId, where, uploaded);
+      if (result?.error) throw new Error(result.error);
+      registered = true;
+      setNotice(
+        `${files.length} file${files.length === 1 ? "" : "s"} uploaded.`,
+      );
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Upload failed. Please try again.",
+      );
+      if (prepared.length && !registered) {
+        try {
+          await cancelPreparedUploads(tenderId, prepared);
+        } catch {
+          /* A cleanup failure does not hide the original upload error. */
+        }
+      }
+    } finally {
+      setUpload(null);
     }
   }
-
-  const busy = isBusy();
-
-  return (
-    <div>
-      {sections.map((section) => {
-        const count = section.rootFiles.length + section.folders.length;
-        const isCollapsed = collapsed[section.id] ?? (section.kind === "milestone" && count === 0);
-
-        return (
-          <div key={section.id} style={{ borderTop: "1px solid rgba(0,0,0,0.08)", padding: "6px 0" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+  function deleteFile(file: DocumentFile) {
+    open({ action: "delete-file", id: file.id, name: file.fileName });
+  }
+  function folder(node: DocumentTreeNode, depth = 0): React.ReactNode {
+    return (
+      <details key={node.folder.id} className={styles.folder}>
+        <summary>
+          {node.folder.name}{" "}
+          <span className="muted">
+            · {node.files.length + node.children.length} items
+          </span>
+        </summary>
+        <div className={styles.folderBody}>
+          {isAdmin && (
+            <div className={styles.actions}>
+              <UploadButton
+                busy={busy}
+                onFiles={(files) =>
+                  void handleUpload({ folderId: node.folder.id }, files)
+                }
+              />
               <button
-                type="button"
-                onClick={() => setCollapsed((c) => ({ ...c, [section.id]: !isCollapsed }))}
-                style={{ border: "none", background: "none", cursor: "pointer", width: 16, padding: 0, color: "inherit" }}
-                title={isCollapsed ? "Expand" : "Collapse"}
-                aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${section.title}`}
-                aria-expanded={!isCollapsed}
+                className="button button-secondary"
+                disabled={busy}
+                onClick={() =>
+                  open({
+                    action: "create",
+                    target: { folderId: node.folder.id },
+                  })
+                }
               >
-                {isCollapsed ? "▸" : "▾"}
+                New subfolder
               </button>
-              <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>
-                {section.title}
-                <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 400, opacity: 0.55 }}>
-                  {section.kind === "milestone" ? "milestone" : "checklist"} · {count ? `${count} item` : "kosong"}
-                </span>
-              </span>
-              {isAdmin && (
-                <>
-                  <label style={{ fontSize: 11.5, cursor: "pointer", textDecoration: "underline" }}>
-                    Upload
-                    <input
-                      type="file"
-                      multiple
-                      style={{ display: "none" }}
-                      disabled={busy}
-                      onChange={(e) => {
-                        handleUpload(section, e.target.files);
-                        e.target.value = "";
-                      }}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    style={{ fontSize: 11.5 }}
-                    disabled={busy}
-                    onClick={() => {
-                      setCollapsed((previous) => ({ ...previous, [section.id]: false }));
-                      setAddingRoot(section.id);
-                      setRootName("");
-                    }}
-                  >
-                    + Folder
-                  </button>
-                </>
-              )}
+              <button
+                className="button button-secondary"
+                disabled={busy}
+                onClick={() =>
+                  open({
+                    action: "rename",
+                    id: node.folder.id,
+                    name: node.folder.name,
+                  })
+                }
+              >
+                Rename
+              </button>
+              <button
+                className="button button-danger"
+                disabled={busy}
+                onClick={() =>
+                  open({
+                    action: "delete-folder",
+                    id: node.folder.id,
+                    name: node.folder.name,
+                  })
+                }
+              >
+                Delete folder
+              </button>
             </div>
-
-            {!isCollapsed && (
-              <div style={{ marginLeft: 22, marginTop: 4 }}>
-                {addingRoot === section.id && (
-                  <div style={{ display: "flex", gap: 6, padding: "3px 0" }}>
-                    <input
-                      value={rootName}
-                      onChange={(e) => setRootName(e.target.value)}
-                      placeholder="Nama folder"
-                      autoFocus
-                      style={{ flex: 1, fontSize: 12.5, padding: "2px 6px" }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && rootName.trim()) {
-                          run(() => createDocumentFolder(tenderId, rootName.trim(), target(section)));
-                          setAddingRoot(null);
-                        }
-                        if (e.key === "Escape") setAddingRoot(null);
-                      }}
-                    />
-                    <button
-                      type="button"
-                      style={{ fontSize: 12 }}
-                      disabled={busy || !rootName.trim()}
-                      onClick={() => {
-                        run(() => createDocumentFolder(tenderId, rootName.trim(), target(section)));
-                        setAddingRoot(null);
-                      }}
-                    >
-                      Add
-                    </button>
-                  </div>
-                )}
-
-                {section.rootFiles.map((file) => (
-                  <FileRow
-                    key={file.id}
-                    file={file}
-                    depth={1}
-                    isAdmin={isAdmin}
-                    busy={busy}
-                    onDelete={(id, name) => {
-                      if (confirm(`Hapus "${name}"?`)) run(() => deleteTenderFile(id));
-                    }}
-                  />
-                ))}
-
-                {section.folders.map((node) => (
-                  <FolderBranch
-                    key={node.folder.id}
-                    node={node}
-                    depth={0}
-                    isAdmin={isAdmin}
-                    busy={busy}
-                    onUpload={(folderId, files) => handleUpload(section, files, folderId)}
-                    onNewFolder={(parentId, name) => run(() => createDocumentFolder(tenderId, name, { folderId: parentId }))}
-                    onRename={(folderId, name) => run(() => renameDocumentFolder(folderId, name))}
-                    onDeleteFolder={(folderId, name) => {
-                      if (confirm(`Hapus folder "${name}" beserta semua file di dalamnya?`)) {
-                        run(() => deleteDocumentFolder(folderId));
-                      }
-                    }}
-                    onDeleteFile={(id, name) => {
-                      if (confirm(`Hapus "${name}"?`)) run(() => deleteTenderFile(id));
-                    }}
-                  />
-                ))}
-
-                {!section.rootFiles.length && !section.folders.length && addingRoot !== section.id && (
-                  <div style={{ fontSize: 12, opacity: 0.5 }}>Belum ada dokumen.</div>
-                )}
+          )}
+          <Files
+            files={node.files}
+            isAdmin={isAdmin}
+            busy={busy}
+            onDelete={deleteFile}
+          />
+          {depth < 30 && node.children.map((child) => folder(child, depth + 1))}
+          {!node.files.length && !node.children.length && (
+            <p className={styles.empty}>This folder is empty.</p>
+          )}
+        </div>
+      </details>
+    );
+  }
+  const needle = query.trim().toLowerCase();
+  const visible = sections.filter(
+    (section) =>
+      !needle ||
+      `${section.title} ${JSON.stringify(section.rootFiles.map((f) => f.fileName))} ${JSON.stringify(section.folders)}`
+        .toLowerCase()
+        .includes(needle),
+  );
+  return (
+    <div ref={container}>
+      <p className="muted">
+        Files up to 5 MB each · up to 50 per upload. Expand a section to view or
+        add files.
+      </p>
+      <div className={styles.toolbar}>
+        <button
+          type="button"
+          className="button button-secondary"
+          disabled={busy}
+          onClick={() => start(() => router.refresh())}
+        >
+          Refresh links
+        </button>
+        <input
+          className="control"
+          type="search"
+          aria-label="Search documents"
+          placeholder="Search sections, folders, or files"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <button
+          className="button button-secondary"
+          onClick={() =>
+            container.current
+              ?.querySelectorAll("details")
+              .forEach((d) => (d.open = true))
+          }
+        >
+          Expand all
+        </button>
+        <button
+          className="button button-secondary"
+          onClick={() =>
+            container.current
+              ?.querySelectorAll("details")
+              .forEach((d) => (d.open = false))
+          }
+        >
+          Collapse all
+        </button>
+      </div>
+      {error && !intent && (
+        <p role="alert" className="feedback feedback-error">
+          {error}
+        </p>
+      )}
+      {notice && (
+        <p role="status" className="feedback feedback-success">
+          {notice}
+        </p>
+      )}
+      {upload && (
+        <div className={styles.progress}>
+          <div className={styles.status}>
+            <span>{upload.name}</span>
+            <span>{upload.pct}%</span>
+          </div>
+          <progress aria-label="File upload" max={100} value={upload.pct} />
+        </div>
+      )}
+      {visible.map((section) => (
+        <details
+          key={section.id}
+          className={styles.section}
+          open={needle ? true : undefined}
+        >
+          <summary>
+            <strong>{section.title}</strong>
+            <small>
+              {section.kind} ·{" "}
+              {section.rootFiles.length + section.folders.length} items
+            </small>
+          </summary>
+          <div className={styles.sectionBody}>
+            {isAdmin && (
+              <div className={styles.actions}>
+                <UploadButton
+                  busy={busy}
+                  onFiles={(files) => void handleUpload(target(section), files)}
+                />
+                <button
+                  className="button button-secondary"
+                  disabled={busy}
+                  onClick={() =>
+                    open({ action: "create", target: target(section) })
+                  }
+                >
+                  New folder
+                </button>
               </div>
             )}
+            <Files
+              files={section.rootFiles}
+              isAdmin={isAdmin}
+              busy={busy}
+              onDelete={deleteFile}
+            />
+            {section.folders.map((node) => folder(node))}
+            {!section.rootFiles.length && !section.folders.length && (
+              <p className={styles.empty}>No files in this section.</p>
+            )}
           </div>
-        );
-      })}
-
-      <UploadProgressBar
-        phase={upload.phase}
-        pct={upload.pct}
-        currentFile={upload.currentFile}
-        totalBytes={upload.totalBytes}
-        uploadedBytes={upload.uploadedBytes}
-      />
-
-      {error && (
-        <div role="alert" style={{ marginTop: 8, fontSize: 12.5, color: "var(--zk-error, #b91c1c)" }}>{error}</div>
+        </details>
+      ))}
+      {!visible.length && (
+        <p className={styles.empty}>No matching document sections.</p>
       )}
+      <Modal
+        open={intent !== null}
+        title={
+          intent?.action === "create"
+            ? "New folder"
+            : intent?.action === "rename"
+              ? "Rename folder"
+              : "Delete document item?"
+        }
+        onClose={() => {
+          if (!pending) setIntent(null);
+        }}
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            execute();
+          }}
+        >
+          {intent &&
+          (intent.action === "create" || intent.action === "rename") ? (
+            <label className="field">
+              Folder name
+              <input
+                className="control"
+                required
+                maxLength={150}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </label>
+          ) : (
+            <p className="muted">
+              Delete “{intent && "name" in intent ? intent.name : ""}”
+              {intent?.action === "delete-folder"
+                ? " and all its files and subfolders"
+                : ""}
+              ? This cannot be undone.
+            </p>
+          )}
+          {error && (
+            <p role="alert" className="feedback feedback-error">
+              {error}
+            </p>
+          )}
+          <div className="dialog-actions">
+            <button
+              type="button"
+              className="button button-secondary"
+              disabled={pending}
+              onClick={() => setIntent(null)}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className={`button ${intent?.action.startsWith("delete") ? "button-danger" : "button-primary"}`}
+              disabled={
+                pending ||
+                ((intent?.action === "create" || intent?.action === "rename") &&
+                  !name.trim())
+              }
+            >
+              {pending
+                ? "Saving…"
+                : intent?.action.startsWith("delete")
+                  ? "Confirm delete"
+                  : "Save folder"}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

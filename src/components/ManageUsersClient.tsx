@@ -1,189 +1,363 @@
 "use client";
-
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createUser, removeUser, resetUserPassword, updateUserRole } from "@/lib/auth/actions";
+import {
+  createUser,
+  removeUser,
+  resetUserPassword,
+  updateUserRole,
+} from "@/lib/auth/actions";
 import type { Profile, UserRole } from "@/lib/types";
-import shared from "./shared.module.css";
-import styles from "./ManageUsers.module.css";
-
-export function ManageUsersClient({ users, currentUserId }: { users: Profile[]; currentUserId: string }) {
+import { PageHeading } from "./PageHeading";
+import { Modal } from "./Modal";
+import styles from "./Workspace.module.css";
+export function ManageUsersClient({
+  users,
+  currentUserId,
+}: {
+  users: Profile[];
+  currentUserId: string;
+}) {
   const router = useRouter();
-  const list = users;
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [search, setSearch] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [pending, start] = useTransition();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [target, setTarget] = useState<{
+    user: Profile;
+    action: "reset" | "remove";
+  } | null>(null);
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<UserRole>("viewer");
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
-
-  function handleCreate() {
-    setError(null);
-    setNotice(null);
-    startTransition(async () => {
-      const result = await createUser({ name, email, role, password });
-      if (result?.error) {
-        setError(result.error);
-        return;
+  const [draft, setDraft] = useState({
+    name: "",
+    email: "",
+    password: "",
+    role: "viewer" as UserRole,
+  });
+  const filtered = users.filter((u) =>
+    `${u.name} ${u.email}`.toLowerCase().includes(search.toLowerCase()),
+  );
+  function run(
+    fn: () => Promise<{ error?: string } | undefined>,
+    success: string,
+    done?: () => void,
+  ) {
+    setError("");
+    setNotice("");
+    start(async () => {
+      try {
+        const result = await fn();
+        if (result?.error) {
+          setError(result.error);
+          return;
+        }
+        setNotice(success);
+        done?.();
+        router.refresh();
+      } catch {
+        setError(
+          "The change could not be saved. Please check your connection and try again.",
+        );
       }
-      setName("");
-      setEmail("");
-      setPassword("");
-      setRole("viewer");
-      router.refresh();
-      setNotice("Account created. Tell them the password directly — there's no invite email.");
     });
   }
-
-  function handleRoleChange(userId: string, newRole: UserRole) {
-    setError(null);
-    setNotice(null);
-    startTransition(async () => {
-      const result = await updateUserRole(userId, newRole);
-      if (result?.error) setError(result.error);
-      else router.refresh();
-    });
-  }
-
-  function handleResetPassword(userId: string, name: string) {
-    const newPassword = window.prompt(`New password for ${name} (at least 8 characters):`);
-    if (!newPassword) return;
-    setError(null);
-    setNotice(null);
-    startTransition(async () => {
-      const result = await resetUserPassword(userId, newPassword);
-      if (result?.error) {
-        setError(result.error);
-        return;
-      }
-      setNotice(`Password reset for ${name}. Tell them the new password directly — they're signed out everywhere.`);
-    });
-  }
-
-  function handleRemove(userId: string) {
-    if (!confirm("Remove this user? They'll lose access immediately.")) return;
-    setError(null);
-    setNotice(null);
-    startTransition(async () => {
-      const result = await removeUser(userId);
-      if (result?.error) setError(result.error);
-      else router.refresh();
-    });
-  }
-
   return (
     <div className={styles.page}>
-      <h1 className={styles.title}>Manage users</h1>
-
-      <div className={shared.card} style={{ marginBottom: 24 }}>
-        <div className={shared.cardHeader}>
-          <h2 className={shared.cardTitle}>Create a user</h2>
-          <span className={shared.cardMeta}>You set their password directly — there&apos;s no invite email</span>
-        </div>
-        <form className={styles.inviteForm} onSubmit={(e) => { e.preventDefault(); handleCreate(); }}>
-          <label className={styles.label}>
-            Name
-            <input className={styles.input} required autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" />
-          </label>
-          <label className={styles.label}>
-            Email
-            <input
-              className={styles.input}
-              type="email" required autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="name@zekindo.co.id"
-            />
-          </label>
-          <label className={styles.label}>
-            Password
-            <input
-              className={styles.input}
-              type="password" required autoComplete="new-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="At least 8 characters"
-              minLength={8}
-            />
-          </label>
-          <label className={styles.label}>
-            Role
-            <select className={styles.input} value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
-              <option value="viewer">Viewer</option>
-              <option value="admin">Admin</option>
-            </select>
-          </label>
+      <PageHeading
+        eyebrow="ADMINISTRATION"
+        title="People & access"
+        description="Manage accounts, permissions, and password resets."
+        actions={
           <button
-            className={styles.inviteButton}
-            type="submit"
-            disabled={isPending || !name || !email || password.length < 8}
+            className="button button-primary"
+            onClick={() => {
+              setError("");
+              setCreateOpen(true);
+            }}
           >
-            {isPending ? "Creating..." : "Create user"}
+            Create user
           </button>
-        </form>
-        {error && <div role="alert" className={styles.errorBanner}>{error}</div>}
-        {notice && (
-          <div role="status" className={styles.errorBanner} style={{ background: "var(--zk-success-light)", color: "var(--zk-success)" }}>
-            {notice}
+        }
+      />
+      <div className={styles.metrics}>
+        {[
+          ["Total accounts", users.length],
+          ["Administrators", users.filter((u) => u.role === "admin").length],
+          ["Viewers", users.filter((u) => u.role === "viewer").length],
+        ].map(([label, value]) => (
+          <div key={label} className={styles.metric}>
+            <span className={styles.metricLabel}>{label}</span>
+            <strong className={styles.metricValue}>{value}</strong>
           </div>
-        )}
+        ))}
       </div>
-
-      <div className={shared.card}>
-        <div className={shared.cardHeader}>
-          <h2 className={shared.cardTitle}>All users</h2>
-          <span className={shared.cardMeta}>{list.length} total</span>
+      {notice && (
+        <p className="feedback feedback-success" role="status">
+          {notice}
+        </p>
+      )}
+      {error && !createOpen && !target && (
+        <p className="feedback feedback-error" role="alert">
+          {error}
+        </p>
+      )}
+      <section className={styles.panel}>
+        <div className={styles.panelHead}>
+          <h2>Workspace members</h2>
+          <input
+            type="search"
+            aria-label="Search users"
+            className="control"
+            style={{ maxWidth: 280 }}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search name or email"
+          />
         </div>
-        <div style={{ overflowX: "auto" }}>
+        <div className={styles.tableWrap}>
           <table className={styles.table}>
             <thead>
               <tr>
-                <th className={styles.th}>Name</th>
-                <th className={styles.th}>Role</th>
-                <th className={styles.th}></th>
-                <th className={styles.th}></th>
+                <th>Name & email</th>
+                <th>Access</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {list.map((u) => (
+              {filtered.map((u) => (
                 <tr key={u.id}>
-                  <td className={styles.td}>
-                    {u.name}
-                    <div className={styles.email}>{u.email}</div>
+                  <td>
+                    <strong>{u.name}</strong>
+                    {u.id === currentUserId && (
+                      <span className="muted"> · You</span>
+                    )}
+                    <div className="muted">{u.email}</div>
                   </td>
-                  <td className={styles.td}>
+                  <td>
                     <select
-                      className={styles.roleSelect}
+                      className="control"
                       aria-label={`Role for ${u.name}`}
                       value={u.role}
-                      disabled={isPending || u.id === currentUserId}
-                      onChange={(e) => handleRoleChange(u.id, e.target.value as UserRole)}
+                      disabled={pending || u.id === currentUserId}
+                      onChange={(e) =>
+                        run(
+                          () =>
+                            updateUserRole(u.id, e.target.value as UserRole),
+                          `Access updated for ${u.name}.`,
+                        )
+                      }
                     >
                       <option value="viewer">Viewer</option>
                       <option value="admin">Admin</option>
                     </select>
                   </td>
-                  <td className={styles.td} style={{ textAlign: "right" }}>
-                    <button className={styles.resetButton} disabled={isPending} onClick={() => handleResetPassword(u.id, u.name)}>
-                      Reset password
-                    </button>
-                  </td>
-                  <td className={styles.td} style={{ textAlign: "right" }}>
-                    <button
-                      className={styles.removeButton}
-                      disabled={isPending || u.id === currentUserId}
-                      onClick={() => handleRemove(u.id)}
-                    >
-                      Remove
-                    </button>
+                  <td>
+                    <div className="heading-actions">
+                      <button
+                        className="button button-secondary"
+                        disabled={pending}
+                        onClick={() => {
+                          setError("");
+                          setPassword("");
+                          setTarget({ user: u, action: "reset" });
+                        }}
+                      >
+                        Reset password
+                      </button>
+                      <button
+                        className="button button-danger"
+                        disabled={pending || u.id === currentUserId}
+                        onClick={() => {
+                          setError("");
+                          setTarget({ user: u, action: "remove" });
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      </div>
+        {!filtered.length && (
+          <p className={styles.empty}>No accounts match this search.</p>
+        )}
+      </section>
+      <Modal
+        open={createOpen}
+        title="Create workspace account"
+        onClose={() => {
+          if (!pending) {
+            setCreateOpen(false);
+            setDraft({ ...draft, password: "" });
+          }
+        }}
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            run(
+              () => createUser(draft),
+              "Account created. Share the initial password securely with the user.",
+              () => {
+                setCreateOpen(false);
+                setDraft({ name: "", email: "", password: "", role: "viewer" });
+              },
+            );
+          }}
+        >
+          <div className="form-stack">
+            <label className="field">
+              Name
+              <input
+                className="control"
+                autoComplete="name"
+                required
+                value={draft.name}
+                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+              />
+            </label>
+            <label className="field">
+              Email
+              <input
+                className="control"
+                autoComplete="email"
+                type="email"
+                required
+                value={draft.email}
+                onChange={(e) => setDraft({ ...draft, email: e.target.value })}
+              />
+            </label>
+            <label className="field">
+              Initial password
+              <input
+                className="control"
+                autoComplete="new-password"
+                type="password"
+                minLength={8}
+                required
+                value={draft.password}
+                onChange={(e) =>
+                  setDraft({ ...draft, password: e.target.value })
+                }
+              />
+            </label>
+            <label className="field">
+              Role
+              <select
+                className="control"
+                value={draft.role}
+                onChange={(e) =>
+                  setDraft({ ...draft, role: e.target.value as UserRole })
+                }
+              >
+                <option value="viewer">Viewer · read-only</option>
+                <option value="admin">
+                  Admin · manage all tenders and users
+                </option>
+              </select>
+            </label>
+          </div>
+          {error && (
+            <p role="alert" className="feedback feedback-error">
+              {error}
+            </p>
+          )}
+          <div className="dialog-actions">
+            <button
+              type="submit"
+              className="button button-primary"
+              disabled={pending}
+            >
+              {pending ? "Creating…" : "Create user"}
+            </button>
+          </div>
+        </form>
+      </Modal>
+      <Modal
+        open={target !== null}
+        title={
+          target?.action === "reset"
+            ? `Reset password for ${target.user.name}`
+            : `Remove ${target?.user.name}?`
+        }
+        onClose={() => {
+          if (!pending) {
+            setTarget(null);
+            setPassword("");
+          }
+        }}
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!target) return;
+            const selected = target;
+            run(
+              () =>
+                selected.action === "reset"
+                  ? resetUserPassword(selected.user.id, password)
+                  : removeUser(selected.user.id),
+              selected.action === "reset"
+                ? "Password updated. Existing sessions were revoked."
+                : "Account removed.",
+              () => {
+                setTarget(null);
+                setPassword("");
+              },
+            );
+          }}
+        >
+          <p className="muted">
+            {target?.action === "reset"
+              ? "The user will be signed out on all devices. Share the new password securely."
+              : "This account will lose access immediately. Existing tender records are retained."}
+          </p>
+          {target?.action === "reset" && (
+            <label className="field">
+              New password
+              <input
+                type="password"
+                className="control"
+                autoComplete="new-password"
+                minLength={8}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </label>
+          )}
+          {error && (
+            <p role="alert" className="feedback feedback-error">
+              {error}
+            </p>
+          )}
+          <div className="dialog-actions">
+            <button
+              className="button button-secondary"
+              type="button"
+              disabled={pending}
+              onClick={() => setTarget(null)}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className={`button ${target?.action === "remove" ? "button-danger" : "button-primary"}`}
+              disabled={pending}
+            >
+              {pending
+                ? "Saving…"
+                : target?.action === "remove"
+                  ? "Confirm removal"
+                  : "Set new password"}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

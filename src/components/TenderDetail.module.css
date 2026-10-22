@@ -131,7 +131,7 @@
 
 .grid2 {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 20px;
 }
 
@@ -223,7 +223,9 @@
   font-size: 13px;
   line-height: 1.7;
   color: var(--color-fg2);
-  min-height: 280px;
+  min-height: 0;
+  overflow-wrap: anywhere;
+  margin: 0;
 }
 
 .archivedBanner {
@@ -258,4 +260,20 @@
   flex-direction: column;
   gap: 4px;
   padding: 4px 4px;
+}
+
+.sidePanels {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+.detailValue {
+  font-size: 17px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.timelineBody {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }

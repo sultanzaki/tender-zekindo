@@ -1,6 +1,16 @@
 "use client";
 
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, LabelList, Cell } from "recharts";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  LabelList,
+  Cell,
+} from "recharts";
 import type { TooltipContentProps } from "recharts";
 import type { GroupValueRow } from "@/lib/analytics";
 import { formatCompactRupiah } from "@/lib/analytics";
@@ -15,12 +25,20 @@ function CustomTooltip({ active, payload }: TooltipContentProps) {
     <div className={styles.tooltip}>
       <div className={styles.tooltipTitle}>{row.group}</div>
       <div className={styles.tooltipRow}>{formatRupiah(row.value)}</div>
-      <div className={styles.tooltipRow}>{row.count} running tender{row.count === 1 ? "" : "s"}</div>
+      <div className={styles.tooltipRow}>
+        {row.count} running tender{row.count === 1 ? "" : "s"}
+      </div>
     </div>
   );
 }
 
-export function PipelineValueChart({ data, emptyMessage }: { data: GroupValueRow[]; emptyMessage: string }) {
+export function PipelineValueChart({
+  data,
+  emptyMessage,
+}: {
+  data: GroupValueRow[];
+  emptyMessage: string;
+}) {
   if (data.length === 0) {
     return (
       <div className={styles.chartWrap}>
@@ -41,7 +59,11 @@ export function PipelineValueChart({ data, emptyMessage }: { data: GroupValueRow
   return (
     <div className={styles.chartWrap} style={{ height }}>
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={top} layout="vertical" margin={{ top: 4, right: 72, left: 4, bottom: 4 }}>
+        <BarChart
+          data={top}
+          layout="vertical"
+          margin={{ top: 4, right: 72, left: 4, bottom: 4 }}
+        >
           <CartesianGrid stroke={CHART_COLORS.grid} horizontal={false} />
           <XAxis
             type="number"
@@ -59,10 +81,22 @@ export function PipelineValueChart({ data, emptyMessage }: { data: GroupValueRow
             axisLine={false}
             tickLine={false}
           />
-          <Tooltip content={CustomTooltip} cursor={{ fill: CHART_COLORS.grid, opacity: 0.4 }} />
-          <Bar dataKey="value" fill={CHART_COLORS.primaryDark} maxBarSize={22} radius={[0, 4, 4, 0]}>
+          <Tooltip
+            content={CustomTooltip}
+            cursor={{ fill: CHART_COLORS.grid, opacity: 0.4 }}
+          />
+          <Bar
+            isAnimationActive={false}
+            dataKey="value"
+            fill={CHART_COLORS.primaryDark}
+            maxBarSize={22}
+            radius={[0, 4, 4, 0]}
+          >
             {top.map((entry, idx) => (
-              <Cell key={entry.group} fill={CATEGORICAL[idx % CATEGORICAL.length]} />
+              <Cell
+                key={entry.group}
+                fill={CATEGORICAL[idx % CATEGORICAL.length]}
+              />
             ))}
             <LabelList
               dataKey="value"

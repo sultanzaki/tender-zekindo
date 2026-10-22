@@ -1,0 +1,161 @@
+.toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.toolbar input {
+  flex: 1;
+  min-width: 180px;
+}
+.toolbar button {
+  font-size: 10px;
+  min-height: 34px;
+  padding: 7px 10px;
+}
+.section {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.section > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  list-style: none;
+  padding: 15px;
+  background: var(--zk-gray-50);
+  cursor: pointer;
+}
+.section > summary::-webkit-details-marker {
+  display: none;
+}
+.section > summary:before {
+  content: "›";
+  font-size: 18px;
+  transition: transform 0.15s;
+}
+.section[open] > summary:before {
+  transform: rotate(90deg);
+}
+.section summary strong {
+  font-size: 12px;
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.section summary small {
+  font-size: 9px;
+  color: var(--color-fg3);
+}
+.sectionBody {
+  padding: 14px;
+}
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.actions button {
+  font-size: 10px;
+  min-height: 32px;
+  padding: 6px 10px;
+}
+.folder {
+  border-left: 2px solid var(--zk-blue-100);
+  padding-left: 12px;
+  margin: 12px 0;
+  min-width: 0;
+}
+.folder > summary {
+  font-size: 12px;
+  cursor: pointer;
+  padding: 8px 0;
+  overflow-wrap: anywhere;
+}
+.folderBody {
+  padding: 8px 0;
+}
+.file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-border);
+  min-width: 0;
+}
+.file > a,
+.file > span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+.file small {
+  font-size: 9px;
+  white-space: nowrap;
+  color: var(--color-fg3);
+}
+.file button {
+  font-size: 10px;
+  background: none;
+  border: 0;
+  color: var(--zk-error);
+  cursor: pointer;
+}
+.empty {
+  font-size: 11px;
+  color: var(--color-fg3);
+  padding: 12px 0;
+}
+.progress {
+  padding: 16px;
+  border-radius: 8px;
+  background: var(--zk-blue-50);
+  margin-bottom: 16px;
+  font-size: 11px;
+}
+.progress progress {
+  display: block;
+  width: 100%;
+  margin: 10px 0;
+  accent-color: var(--color-primary);
+}
+.status {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.status > span {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+@media (max-width: 600px) {
+  .section > summary {
+    padding: 12px;
+    gap: 8px;
+  }
+  .section summary strong {
+    font-size: 11px;
+  }
+  .section summary small {
+    font-size: 8px;
+  }
+  .sectionBody {
+    padding: 12px;
+  }
+  .folder {
+    padding-left: 8px;
+  }
+  .file {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .file a {
+    flex-basis: 70%;
+  }
+}

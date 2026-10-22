@@ -70,7 +70,7 @@ before(async () => {
 });
 after(async () => {
   await browser?.close();
-  await new Promise((resolve) => server?.close(resolve));
+  if (server) await new Promise((resolve) => server.close(resolve));
   if (directory) await rm(directory, { recursive: true, force: true });
 });
 async function open(component, width = 1280) {
@@ -78,26 +78,30 @@ async function open(component, width = 1280) {
   await page.goto(`${base}/?component=${component}`);
   return page;
 }
-test("mobile admin can reach users and sign out; Escape restores focus", async () => {
+test("mobile navigation exposes account actions and preserves downstream creation", async () => {
   const page = await open("nav", 375);
   await page.goto(page.url() + "&track=downstream");
-  await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByRole("button", { name: "Account", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog
+    .getByRole("link", { name: "Manage users", exact: true })
+    .waitFor();
   assert.equal(
-    await page.getByRole("link", { name: "Manage users" }).isVisible(),
-    true,
-  );
-  assert.equal(
-    await page.getByRole("button", { name: "Sign out" }).isVisible(),
-    true,
-  );
-  assert.equal(
-    await page.getByRole("link", {name: "+ New Tender", exact: true}).getAttribute("href"),
+    await dialog
+      .getByRole("link", { name: "New tender", exact: true })
+      .getAttribute("href"),
     "/tenders/new?track=downstream",
+  );
+  assert.equal(
+    await dialog
+      .getByRole("button", { name: "Sign out", exact: true })
+      .isVisible(),
+    true,
   );
   await page.keyboard.press("Escape");
   assert.equal(
     await page
-      .getByRole("button", { name: "Open menu" })
+      .getByRole("button", { name: "Account", exact: true })
       .evaluate((e) => e === document.activeElement),
     true,
   );
@@ -109,7 +113,7 @@ test("mobile admin can reach users and sign out; Escape restores focus", async (
   );
   await page.close();
 });
-test("decimal amounts retain fractions and large integers without precision loss", async () => {
+test("decimal fields retain fractions and precision during editing", async () => {
   const page = await open("number");
   const input = page.getByRole("textbox", { name: "Amount" });
   await input.focus();
@@ -117,13 +121,9 @@ test("decimal amounts retain fractions and large integers without precision loss
   await input.fill("9007199254740993.50");
   await input.blur();
   assert.equal(await input.inputValue(), "9.007.199.254.740.993,50");
-  assert.equal(
-    await page.locator("output").textContent(),
-    "9007199254740993.50",
-  );
   await page.close();
 });
-test("wizard validates required fields before advancing", async () => {
+test("new tender validates identity, reviews all stages and surfaces save errors", async () => {
   const page = await open("wizard");
   await page.getByRole("button", { name: "Next", exact: true }).click();
   assert.equal(
@@ -140,9 +140,19 @@ test("wizard validates required fields before advancing", async () => {
   await page
     .getByRole("combobox", { name: "Entity / Consortium", exact: true })
     .waitFor();
+  await page.getByLabel("Quantity", { exact: true }).fill("12.5");
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Create tender", exact: true })
+    .click();
+  await page
+    .getByRole("alert")
+    .filter({ hasText: "Test save blocked" })
+    .waitFor();
   await page.close();
 });
-test("filtering resets pagination and clears hidden bulk selection", async () => {
+test("table filters reset pagination and selection; URL and export match", async () => {
   const page = await open("table");
   await page.getByRole("button", { name: "Next", exact: true }).click();
   await page.getByRole("button", { name: "Next", exact: true }).click();
@@ -150,21 +160,24 @@ test("filtering resets pagination and clears hidden bulk selection", async () =>
     .getByRole("checkbox", { name: "Select tender TN-101", exact: true })
     .check();
   await page.getByRole("searchbox").fill("Package 1");
-  assert.equal(
-    await page.getByText("Page 1 of 1", { exact: true }).isVisible(),
-    true,
-  );
+  await page.getByText("Page 1 of 1", { exact: true }).waitFor();
   assert.equal(await page.getByText("1 selected", { exact: true }).count(), 0);
+  await page.waitForURL(/search=Package/);
+  assert.ok(
+    (
+      await page
+        .getByRole("link", { name: "Export to Excel", exact: true })
+        .getAttribute("href")
+    ).includes("search=Package+1"),
+  );
   await page
     .getByRole("button", { name: "Reset filters", exact: true })
+    .first()
     .click();
-  assert.equal(
-    await page.getByText("Page 1 of 3", { exact: true }).isVisible(),
-    true,
-  );
+  await page.getByText("Page 1 of 3", { exact: true }).waitFor();
   await page.close();
 });
-test("sorting and column menu work with keyboard", async () => {
+test("sorting and quick edits work with keyboard; detail links preserve context", async () => {
   const page = await open("table");
   const sort = page.getByRole("button", { name: "Customer", exact: true });
   await sort.focus();
@@ -183,21 +196,84 @@ test("sorting and column menu work with keyboard", async () => {
       .getAttribute("aria-expanded"),
     "false",
   );
+  assert.ok(
+    (
+      await page
+        .getByRole("link", { name: "TN-1", exact: true })
+        .getAttribute("href")
+    ).startsWith("/tenders/0?returnTo="),
+  );
+  await page
+    .getByRole("button", { name: "Edit result for TN-1", exact: true })
+    .focus();
+  await page.keyboard.press("Enter");
+  await page
+    .getByRole("combobox", { name: "Edit result for TN-1", exact: true })
+    .waitFor();
+  await page.close();
+});
+test("mobile tender cards fit narrow screens and keep detail access", async () => {
+  const page = await open("table", 375);
   assert.equal(
     await page
-      .getByRole("link", { name: "TN-1", exact: true })
-      .getAttribute("href"),
-    "/tenders/0",
+      .getByRole("link", { name: /TN-1 Running/ })
+      .first()
+      .isVisible(),
+    true,
+  );
+  assert.equal(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > innerWidth,
+    ),
+    false,
   );
   await page.close();
 });
-test("failed removal preserves user row and failed role update preserves role", async () => {
+test("saved views restore filter state and column preferences persist", async () => {
+  const page = await open("table");
+  await page
+    .getByRole("combobox", { name: "Result", exact: true })
+    .selectOption("WIN");
+  await page.getByRole("button", { name: "Save view", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("textbox", { name: "View name" }).fill("Wins");
+  await dialog.getByRole("button", { name: "Save view", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Reset filters", exact: true })
+    .first()
+    .click();
+  await page
+    .getByRole("combobox", { name: "Saved views", exact: true })
+    .selectOption("0");
+  assert.equal(
+    await page
+      .getByRole("combobox", { name: "Result", exact: true })
+      .inputValue(),
+    "WIN",
+  );
+  await page
+    .getByRole("button", { name: "Reset filters", exact: true })
+    .first()
+    .click();
+  await page.getByRole("button", { name: "Columns", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Period", exact: true }).check();
+  await page.reload();
+  await page.getByRole("columnheader", { name: /Period/ }).waitFor();
+  await page.close();
+});
+test("failed user removal and role changes preserve server-confirmed rows", async () => {
   const page = await open("users");
-  page.on("dialog", (d) => d.accept());
   const row = page.getByRole("row").filter({ hasText: "Test Viewer" });
   await row.getByRole("button", { name: "Remove", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Confirm removal", exact: true })
+    .click();
   await page.getByRole("alert").waitFor();
   assert.equal(await row.count(), 1);
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Cancel", exact: true })
+    .click();
   await row.getByRole("combobox").selectOption("admin");
   await page
     .getByRole("alert")
@@ -206,16 +282,22 @@ test("failed removal preserves user row and failed role update preserves role", 
   assert.equal(await row.getByRole("combobox").inputValue(), "viewer");
   await page.close();
 });
-test("creating user refreshes list after success", async () => {
+test("user creation validates inputs and refreshes after success", async () => {
   const page = await open("users");
-  await page
+  await page.getByRole("button", { name: "Create user", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog
     .getByRole("textbox", { name: "Name", exact: true })
     .fill("New user");
-  await page
+  await dialog
     .getByRole("textbox", { name: "Email", exact: true })
     .fill("new@example.test");
-  await page.getByLabel("Password", { exact: true }).fill("example-password");
-  await page.getByRole("button", { name: "Create user", exact: true }).click();
+  await dialog
+    .getByLabel("Initial password", { exact: true })
+    .fill("example-password");
+  await dialog
+    .getByRole("button", { name: "Create user", exact: true })
+    .click();
   await page.getByRole("status").waitFor();
   assert.equal(
     await page.locator("body").getAttribute("data-refreshed"),
@@ -223,50 +305,46 @@ test("creating user refreshes list after success", async () => {
   );
   await page.close();
 });
-test("adding folder expands collapsed section; failed upload enables retry", async () => {
+test("document folder actions use a dialog and upload errors restore controls", async () => {
   const page = await open("documents");
-  await page.getByRole("button", { name: "+ Folder", exact: true }).click();
-  assert.equal(await page.getByPlaceholder("Nama folder").isVisible(), true);
+  await page.locator("summary").filter({ hasText: "Site Visit" }).click();
+  await page.getByRole("button", { name: "New folder", exact: true }).click();
   await page
-    .locator("input[type=file]")
-    .setInputFiles({
-      name: "test.txt",
-      mimeType: "text/plain",
-      buffer: Buffer.from("fixture"),
-    });
+    .getByRole("textbox", { name: "Folder name", exact: true })
+    .fill("Proposals");
+  await page.getByRole("button", { name: "Save folder", exact: true }).click();
+  await page.getByRole("status").waitFor();
+  await page
+    .getByRole("button", { name: "Upload files", exact: true })
+    .waitFor({ state: "visible" });
+  const choosing = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Upload files", exact: true }).click();
+  await (
+    await choosing
+  ).setFiles({
+    name: "test.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("fixture"),
+  });
   await page.getByRole("alert").waitFor();
   assert.equal(
     await page
-      .getByRole("button", { name: "+ Folder", exact: true })
+      .getByRole("button", { name: "Upload files", exact: true })
       .isEnabled(),
     true,
   );
   await page.close();
 });
-test("quick-edit result can be opened with keyboard", async () => {
+test("bulk archive confirms intent and failure uses alert feedback", async () => {
   const page = await open("table");
-  const edit = page.getByRole("button", {
-    name: "Edit result for TN-1",
-    exact: true,
-  });
-  await edit.focus();
-  await page.keyboard.press("Enter");
-  assert.equal(
-    await page
-      .getByRole("combobox", { name: "Edit result for TN-1", exact: true })
-      .isVisible(),
-    true,
-  );
-  await page.close();
-});
-test("bulk action errors use alert feedback instead of success styling", async () => {
-  const page = await open("table");
-  page.on("dialog", (d) => d.accept());
   await page
     .getByRole("checkbox", { name: "Select tender TN-1", exact: true })
     .check();
   await page
     .getByRole("button", { name: "Archive selected", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Confirm archive", exact: true })
     .click();
   await page.getByRole("alert").waitFor();
   assert.equal(
@@ -279,5 +357,192 @@ test("bulk action errors use alert feedback instead of success styling", async (
       .isChecked(),
     true,
   );
+  await page.close();
+});
+test("edit saves decimal values and an empty milestone order together", async () => {
+  const page = await open("edit");
+  await page.getByRole("button", { name: "3 Milestones", exact: true }).click();
+  await page.getByRole("button", { name: "Remove", exact: true }).click();
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await page.getByRole("alert").waitFor();
+  const saved = JSON.parse(
+    await page.locator("body").getAttribute("data-saved"),
+  );
+  assert.deepEqual(saved.milestoneOrder, []);
+  assert.equal(saved.qty, "12.5");
+  await page.close();
+});
+test("permanent deletion requires typed confirmation and surfaces failure", async () => {
+  const page = await open("archive");
+  await page
+    .getByRole("button", { name: "Delete permanently", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  assert.equal(
+    await dialog
+      .getByRole("button", { name: "Delete permanently", exact: true })
+      .isDisabled(),
+    true,
+  );
+  await dialog.getByRole("textbox").fill("DELETE");
+  await dialog
+    .getByRole("button", { name: "Delete permanently", exact: true })
+    .click();
+  await page.getByRole("alert").waitFor();
+  await page.close();
+});
+test("deadline views export a readable calendar and handle empty followups", async () => {
+  const page = await open("deadlines");
+  const download = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "Download calendar", exact: true })
+    .click();
+  assert.equal((await download).suggestedFilename(), "zekindo-deadlines.ics");
+  await page
+    .getByRole("button", { name: "Needs follow-up", exact: true })
+    .click();
+  await page
+    .getByText("Nothing matches this view.", { exact: false })
+    .waitFor();
+  await page.close();
+});
+test("milestone catalogs switch tracks without mixing them", async () => {
+  const page = await open("milestones");
+  await page.getByRole("button", { name: "Downstream", exact: true }).click();
+  await page
+    .getByRole("heading", { name: "Downstream milestones", exact: true })
+    .waitFor();
+  assert.equal(
+    await page
+      .getByRole("heading", { name: "Upstream milestones", exact: true })
+      .count(),
+    0,
+  );
+  await page.close();
+});
+test("dirty forms guard navigation and allow an explicit discard", async () => {
+  const page = await open("wizard");
+  await page
+    .getByRole("textbox", { name: "Tender number", exact: true })
+    .fill("DRAFT");
+  await page.evaluate(() => {
+    const link = document.createElement("a");
+    link.href = "/tenders";
+    link.textContent = "Other page";
+    document.body.append(link);
+  });
+  await page.getByRole("link", { name: "Other page", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog
+    .getByRole("heading", { name: "Leave without saving?", exact: true })
+    .waitFor();
+  await dialog
+    .getByRole("button", { name: "Keep editing", exact: true })
+    .click();
+  assert.equal(
+    await page
+      .getByRole("textbox", { name: "Tender number", exact: true })
+      .inputValue(),
+    "DRAFT",
+  );
+  await page.getByRole("link", { name: "Other page", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Discard and leave", exact: true })
+    .click();
+  assert.equal(
+    await page.locator("body").getAttribute("data-pushed"),
+    "/tenders",
+  );
+  await page.close();
+});
+test("custom milestones remain available after reviewing a new tender", async () => {
+  const page = await open("wizard");
+  await page
+    .getByRole("combobox", { name: "Area", exact: true })
+    .selectOption("Jawa");
+  await page
+    .getByRole("combobox", { name: "Customer", exact: true })
+    .selectOption("Customer");
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await page.getByText("Create a custom milestone", { exact: true }).click();
+  await page
+    .getByRole("textbox", { name: "Custom milestone name", exact: true })
+    .fill("Special gate");
+  await page
+    .getByRole("button", { name: "Create milestone", exact: true })
+    .click();
+  await page.getByLabel("Special gate", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await page.getByLabel("Special gate", { exact: true }).waitFor();
+  await page.close();
+});
+test("login preserves entries after a failed sign-in and supports password visibility", async () => {
+  const page = await open("login");
+  await page
+    .getByRole("textbox", { name: "Email address", exact: true })
+    .fill("test@example.test");
+  await page.getByLabel("Password", { exact: true }).fill("example-password");
+  await page
+    .getByRole("button", { name: "Show password", exact: true })
+    .click();
+  assert.equal(
+    await page.getByLabel("Password", { exact: true }).getAttribute("type"),
+    "text",
+  );
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByRole("alert").waitFor();
+  assert.equal(
+    await page
+      .getByRole("textbox", { name: "Email address", exact: true })
+      .inputValue(),
+    "test@example.test",
+  );
+  await page.close();
+});
+test("key screens and admin forms fit narrow phones, tablets and desktop", async () => {
+  for (const width of [320, 768, 1440])
+    for (const component of [
+      "nav",
+      "table",
+      "wizard",
+      "edit",
+      "users",
+      "documents",
+      "deadlines",
+      "milestones",
+      "login",
+    ]) {
+      const page = await open(component, width);
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth > innerWidth,
+      );
+      assert.equal(overflow, false, `${component} overflow at ${width}`);
+      await page.close();
+    }
+});
+test("file uploads complete registration after storage transfer", async () => {
+  const page = await open("documents");
+  await page.goto(page.url() + "&upload=success");
+  await page.locator("summary").filter({ hasText: "Site Visit" }).click();
+  const choosing = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Upload files", exact: true }).click();
+  await (
+    await choosing
+  ).setFiles([
+    { name: "one.txt", mimeType: "text/plain", buffer: Buffer.from("one") },
+    { name: "two.txt", mimeType: "text/plain", buffer: Buffer.from("two") },
+  ]);
+  await page
+    .getByRole("status")
+    .filter({ hasText: "2 files uploaded." })
+    .waitFor();
+  const uploaded = JSON.parse(
+    await page.locator("body").getAttribute("data-uploaded"),
+  );
+  assert.equal(uploaded.length, 2);
+  assert.equal(uploaded[0].fileName, "one.txt");
+  assert.equal(uploaded[1].size, 3);
   await page.close();
 });

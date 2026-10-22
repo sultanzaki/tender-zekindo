@@ -1,3 +1,4 @@
+import { safeNextPath } from "@/lib/validation";
 import { redirect } from "next/navigation";
 import { getAuthContext } from "@/lib/auth/dal";
 import { LoginForm } from "@/components/LoginForm";
@@ -10,7 +11,7 @@ export default async function LoginPage({
   searchParams: Promise<{ next?: string }>;
 }) {
   const { next } = await searchParams;
-  const safeNext = next && next.startsWith("/") ? next : "/";
+  const safeNext = safeNextPath(next);
 
   // A real DB-backed check, not just cookie presence (that's what proxy.ts
   // does, cheaply) — matters because a session can be revoked (e.g. an

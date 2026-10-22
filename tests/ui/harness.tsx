@@ -1,7 +1,12 @@
+import { LoginForm } from "../../src/components/LoginForm";
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { TopNav } from "../../src/components/TopNav";
 import { TenderTableClient } from "../../src/components/TenderTableClient";
+import { EditTenderForm } from "../../src/components/EditTenderForm";
+import { ArchiveAction } from "../../src/components/ArchiveAction";
+import { DeadlineWorkspace } from "../../src/components/DeadlineWorkspace";
+import { MilestoneAdmin } from "../../src/components/MilestoneAdmin";
 import { NewTenderForm } from "../../src/components/NewTenderForm";
 import { ManageUsersClient } from "../../src/components/ManageUsersClient";
 import { NumberInput } from "../../src/components/NumberInput";
@@ -48,8 +53,9 @@ function NumberDemo() {
 const components = {
   nav: (
     <>
-      <TopNav profile={user} />
-      <main style={{ height: 400 }}>Page content</main>
+      <TopNav profile={user}>
+        <div style={{ height: 400 }}>Page content</div>
+      </TopNav>
     </>
   ),
   table: (
@@ -88,6 +94,66 @@ const components = {
       currentUserId="admin"
     />
   ),
+  edit: (
+    <EditTenderForm
+      tender={
+        {
+          ...tenders[0],
+          qty: 12.5,
+          oe: 1000,
+          nilaiPenawaran: 900,
+          oeCatatan: null,
+          catatanInternal: null,
+        } as Tender
+      }
+      selectOptions={{
+        area: ["Jawa"],
+        customer: ["Customer"],
+        entitas: ["ZKI"],
+      }}
+      milestoneTypes={[
+        {
+          id: "m1",
+          key: "m1",
+          label: "Site visit",
+          track: "upstream",
+          sortOrder: 1,
+          showInTable: true,
+        },
+      ]}
+      existingTenders={[]}
+    />
+  ),
+  archive: <ArchiveAction tenderId="t" action="delete" />,
+  deadlines: (
+    <DeadlineWorkspace
+      deadlines={[
+        {
+          tenderId: "t",
+          days: 2,
+          daysLabel: "D-2",
+          customer: "Customer",
+          product: "Package",
+          milestoneLabel: "Site visit",
+          dateFormatted: "24 Oct 2026",
+          dateIso: "2026-10-24",
+          milestoneKey: "m1",
+          urgent: true,
+          track: "upstream",
+        },
+      ]}
+      followups={[]}
+    />
+  ),
+  milestones: (
+    <MilestoneAdmin
+      sections={[
+        { track: "upstream", loadError: null, milestoneTypes: [] },
+        { track: "downstream", loadError: null, milestoneTypes: [] },
+      ]}
+    />
+  ),
+  login: <LoginForm next="/" />,
   number: <NumberDemo />,
   documents: (
     <DocumentExplorer
@@ -107,7 +173,6 @@ const components = {
     />
   ),
 };
-const name = new URLSearchParams(location.search).get(
-  "component",
-) as keyof typeof components;
+const name = (new URLSearchParams(location.search).get("component") ||
+  "table") as keyof typeof components;
 createRoot(document.getElementById("root")!).render(components[name]);

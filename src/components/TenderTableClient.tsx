@@ -1,9 +1,26 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import Link from "next/link";
+import { PageHeading } from "./PageHeading";
+import { TableViews } from "./TableViews";
+import { Modal } from "./Modal";
+import { useStoredJSON } from "./useStoredJSON";
+import { readTenderFilters, tenderQuery } from "@/lib/table-state";
+import { TrackSwitch } from "./TrackSwitch";
 import { useRouter } from "next/navigation";
-import { bulkArchiveTenders, bulkDeleteTenders, quickUpdateMilestone, quickUpdateResult } from "@/lib/actions";
+import {
+  bulkArchiveTenders,
+  quickUpdateMilestone,
+  quickUpdateResult,
+} from "@/lib/actions";
 import {
   DEFAULT_FILTERS,
   RESULT_ENUM,
@@ -15,7 +32,15 @@ import {
   TRACK_LABELS,
 } from "@/lib/types";
 import { TrackBadge } from "./TrackBadge";
-import { dateTone, filterTenders, formatDateID, formatRupiah, sortTenders, type SortDirection, type SortKey } from "@/lib/tender-logic";
+import {
+  dateTone,
+  filterTenders,
+  formatDateID,
+  formatRupiah,
+  sortTenders,
+  type SortDirection,
+  type SortKey,
+} from "@/lib/tender-logic";
 import { ResultBadge } from "./ResultBadge";
 import shared from "./shared.module.css";
 import styles from "./TenderTable.module.css";
@@ -52,7 +77,9 @@ const FIELD_TOGGLE_DEFAULTS: Record<string, boolean> = {
  * The full label stays available via the header's title attribute. */
 const HEADER_MAX = 16;
 function shortHeader(label: string): string {
-  return label.length > HEADER_MAX ? label.slice(0, HEADER_MAX - 1).trimEnd() + "…" : label;
+  return label.length > HEADER_MAX
+    ? label.slice(0, HEADER_MAX - 1).trimEnd() + "…"
+    : label;
 }
 
 const PAGE_SIZES = [25, 50, 100];
@@ -62,9 +89,17 @@ interface EditingCell {
   column: string; // "result", or a milestone key
 }
 
-function SortIndicator({ active, direction }: { active: boolean; direction: SortDirection }) {
+function SortIndicator({
+  active,
+  direction,
+}: {
+  active: boolean;
+  direction: SortDirection;
+}) {
   if (!active) return null;
-  return <span className={styles.sortArrow}>{direction === "asc" ? "▲" : "▼"}</span>;
+  return (
+    <span className={styles.sortArrow}>{direction === "asc" ? "▲" : "▼"}</span>
+  );
 }
 
 export function TenderTableClient({
@@ -74,6 +109,7 @@ export function TenderTableClient({
   anchor,
   isAdmin,
   track,
+  initialFilters = DEFAULT_FILTERS,
 }: {
   tenders: Tender[];
   options: FilterOptions;
@@ -82,20 +118,38 @@ export function TenderTableClient({
   isAdmin: boolean;
   /** The track being shown. Carried into the export link so exporting cannot
    * silently dump the other track's tenders into the spreadsheet. */
-  track: Track;
+  track: Track | "all";
+  initialFilters?: TenderFilters;
 }) {
   const router = useRouter();
-  const [filters, setFilters] = useState<TenderFilters>(DEFAULT_FILTERS);
+  const [filters, setFilters] = useState<TenderFilters>(initialFilters);
   // Keyed by column key rather than a fixed union: milestone keys are data now,
   // so an admin-added milestone needs a visibility slot without a code change.
   // The starting state comes from `milestone_types.show_in_table`.
-  const [visibleCols, setVisibleCols] = useState<Record<string, boolean>>(() => {
+  const defaultCols = useMemo(() => {
     const initial: Record<string, boolean> = { ...FIELD_TOGGLE_DEFAULTS };
     for (const m of milestoneTypes) initial[m.key] = m.showInTable;
     return initial;
-  });
+  }, [milestoneTypes]);
+  const [storedCols, saveCols] = useStoredJSON(
+    `zekindo-columns:${track}`,
+    defaultCols,
+  );
+  const visibleCols: Record<string, boolean> = { ...defaultCols };
+  if (storedCols && typeof storedCols === "object")
+    for (const key of Object.keys(defaultCols))
+      if (typeof storedCols[key] === "boolean")
+        visibleCols[key] = storedCols[key];
+  function setVisibleCols(
+    update: (previous: Record<string, boolean>) => Record<string, boolean>,
+  ) {
+    saveCols(update(visibleCols));
+  }
   const [showColMenu, setShowColMenu] = useState(false);
-  const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection } | null>(null);
+  const [sort, setSort] = useState<{
+    key: SortKey;
+    direction: SortDirection;
+  } | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
@@ -110,7 +164,8 @@ export function TenderTableClient({
   useEffect(() => {
     if (!showColMenu) return;
     function onClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setShowColMenu(false);
+      if (menuRef.current && !menuRef.current.contains(e.target as Node))
+        setShowColMenu(false);
     }
     document.addEventListener("mousedown", onClickOutside);
     function onKeyDown(e: KeyboardEvent) {
@@ -126,10 +181,37 @@ export function TenderTableClient({
     };
   }, [showColMenu]);
 
-  const filtered = useMemo(() => filterTenders(tenders, filters), [tenders, filters]);
+  const deferredFilters = useDeferredValue(filters);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const query = tenderQuery(filters, track);
+      window.history.replaceState(
+        null,
+        "",
+        `${window.location.pathname}${query ? `?${query}` : ""}`,
+      );
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [filters, track]);
+  useEffect(() => {
+    function restore() {
+      setFilters(
+        readTenderFilters(new URLSearchParams(window.location.search)),
+      );
+      setPage(1);
+      setSelected(new Set());
+    }
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, []);
+  const [archiveConfirm, setArchiveConfirm] = useState(false);
+  const filtered = useMemo(
+    () => filterTenders(tenders, deferredFilters),
+    [tenders, deferredFilters],
+  );
   const sorted = useMemo(
     () => (sort ? sortTenders(filtered, sort.key, sort.direction) : filtered),
-    [filtered, sort]
+    [filtered, sort],
   );
 
   // Clamped rather than reset-via-effect: whenever filtering/sorting shrinks
@@ -139,7 +221,7 @@ export function TenderTableClient({
   const safePage = Math.min(page, pageCount);
   const pageItems = useMemo(
     () => sorted.slice((safePage - 1) * pageSize, safePage * pageSize),
-    [sorted, safePage, pageSize]
+    [sorted, safePage, pageSize],
   );
 
   const visibleMilestones = milestoneTypes.filter((m) => visibleCols[m.key]);
@@ -150,13 +232,18 @@ export function TenderTableClient({
     setSelected(new Set());
   }
 
+  function tenderHref(id: string) {
+    return `/tenders/${id}?${new URLSearchParams({ returnTo: `/tenders?${tenderQuery(filters, track)}` })}`;
+  }
+
   function resetFilters() {
     changeFilters(() => DEFAULT_FILTERS);
   }
 
   // ── Bulk selection ──────────────────────────────────────────────────────
   const pageIds = pageItems.map((t) => t.id);
-  const allOnPageSelected = pageIds.length > 0 && pageIds.every((id) => selected.has(id));
+  const allOnPageSelected =
+    pageIds.length > 0 && pageIds.every((id) => selected.has(id));
 
   function toggleRow(id: string) {
     setSelected((prev) => {
@@ -176,39 +263,27 @@ export function TenderTableClient({
     });
   }
 
-  async function runBulk(action: "archive" | "delete") {
+  async function runBulk() {
     const ids = [...selected];
     if (!ids.length) return;
-
-    if (action === "archive") {
-      if (
-        !confirm(
-          `Archive ${ids.length} tender${ids.length === 1 ? "" : "s"}?\n\nThey'll disappear from the dashboard and table, and can be restored from /tenders/archive.`
-        )
-      ) {
-        return;
-      }
-    } else {
-      const typed = prompt(
-        `Permanently delete ${ids.length} tender${ids.length === 1 ? "" : "s"}?\n\nThis removes the rows AND their uploaded documents. It cannot be undone.\n\nType DELETE to confirm:`
-      );
-      if (typed !== "DELETE") return;
-    }
-
     setBulkBusy(true);
     setBulkMessage(null);
     setQuickEditError(null);
     try {
-      const result = action === "archive" ? await bulkArchiveTenders(ids) : await bulkDeleteTenders(ids);
+      const result = await bulkArchiveTenders(ids);
       if (result.error) {
         setQuickEditError(result.error);
         return;
       }
       setSelected(new Set());
-      setBulkMessage(`${result.count} tender${result.count === 1 ? "" : "s"} ${action === "archive" ? "archived" : "deleted"}.`);
+      setBulkMessage(
+        `${result.count} tender${result.count === 1 ? "" : "s"} archived.`,
+      );
       router.refresh();
     } catch {
-      setQuickEditError("Could not complete the bulk action. Please try again.");
+      setQuickEditError(
+        "Could not complete the bulk action. Please try again.",
+      );
     } finally {
       setBulkBusy(false);
     }
@@ -252,18 +327,36 @@ export function TenderTableClient({
     });
   }
 
-  function sortableHeader(key: SortKey, label: string, align: "left" | "right" = "left", title?: string) {
+  function sortableHeader(
+    key: SortKey,
+    label: string,
+    align: "left" | "right" = "left",
+    title?: string,
+  ) {
     return (
       <th
         key={key}
         scope="col"
-        aria-sort={sort?.key === key ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}
-        className={`${styles.th} ${align === "right" ? styles.thRight : ""} ${styles.thSortable}`}
+        aria-sort={
+          sort?.key === key
+            ? sort.direction === "asc"
+              ? "ascending"
+              : "descending"
+            : "none"
+        }
+        className={`${styles.th} ${key === "tenderNo" ? styles.stickyIdentity : ""} ${align === "right" ? styles.thRight : ""} ${styles.thSortable}`}
         title={title}
       >
-        <button type="button" className={styles.sortButton} onClick={() => toggleSort(key)}>
+        <button
+          type="button"
+          className={styles.sortButton}
+          onClick={() => toggleSort(key)}
+        >
           {label}
-          <SortIndicator active={sort?.key === key} direction={sort?.direction ?? "asc"} />
+          <SortIndicator
+            active={sort?.key === key}
+            direction={sort?.direction ?? "asc"}
+          />
         </button>
       </th>
     );
@@ -271,22 +364,64 @@ export function TenderTableClient({
 
   return (
     <div className={styles.wrap}>
-      <h1 className={styles.title}>Tenders</h1>
+      <PageHeading
+        eyebrow="TENDER WORKSPACE"
+        title="Tenders"
+        description="Find opportunities, track progress, and keep the next step moving."
+        actions={
+          <a href={exportHref} className="button button-primary">
+            Export to Excel
+          </a>
+        }
+      />
+      <TrackSwitch
+        current={track}
+        basePath="/tenders"
+        params={Object.fromEntries(
+          new URLSearchParams(tenderQuery(filters, track)),
+        )}
+      />
+      <div className={styles.viewBar}>
+        <div className={styles.quickViews} aria-label="Quick filters">
+          {[
+            ["all", "All results"],
+            ["__EMPTY__", "Active"],
+            ["WIN", "Won"],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              aria-pressed={filters.result === value}
+              onClick={() => changeFilters((f) => ({ ...f, result: value }))}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <TableViews
+          track={track}
+          filters={filters}
+          onApply={(next) => changeFilters(() => next)}
+        />
+      </div>
       <div className={shared.card} style={{ overflow: "visible" }}>
         <div className={styles.toolbar}>
           <input
             aria-label="Search tenders"
             type="search"
             className={styles.search}
-            placeholder="Search tender number or package title..."
+            placeholder="Search number, package, customer, area…"
             value={filters.search}
-            onChange={(e) => changeFilters((f) => ({ ...f, search: e.target.value }))}
+            onChange={(e) =>
+              changeFilters((f) => ({ ...f, search: e.target.value }))
+            }
           />
           <select
             className={styles.select}
             aria-label="Period"
             value={filters.period}
-            onChange={(e) => changeFilters((f) => ({ ...f, period: e.target.value }))}
+            onChange={(e) =>
+              changeFilters((f) => ({ ...f, period: e.target.value }))
+            }
           >
             <option value="all">All Periods</option>
             {options.periods.map((p) => (
@@ -295,8 +430,14 @@ export function TenderTableClient({
               </option>
             ))}
           </select>
-          <select className={styles.select} aria-label="Area"
-            value={filters.area} onChange={(e) => changeFilters((f) => ({ ...f, area: e.target.value }))}>
+          <select
+            className={styles.select}
+            aria-label="Area"
+            value={filters.area}
+            onChange={(e) =>
+              changeFilters((f) => ({ ...f, area: e.target.value }))
+            }
+          >
             <option value="all">All Areas</option>
             {options.areas.map((a) => (
               <option key={a} value={a}>
@@ -308,7 +449,9 @@ export function TenderTableClient({
             className={styles.select}
             aria-label="Entity"
             value={filters.entitas}
-            onChange={(e) => changeFilters((f) => ({ ...f, entitas: e.target.value }))}
+            onChange={(e) =>
+              changeFilters((f) => ({ ...f, entitas: e.target.value }))
+            }
           >
             <option value="all">All Entities</option>
             {options.entitasList.map((en) => (
@@ -321,7 +464,9 @@ export function TenderTableClient({
             className={styles.select}
             aria-label="Customer"
             value={filters.customer}
-            onChange={(e) => changeFilters((f) => ({ ...f, customer: e.target.value }))}
+            onChange={(e) =>
+              changeFilters((f) => ({ ...f, customer: e.target.value }))
+            }
           >
             <option value="all">All Customers</option>
             {options.customers.map((c) => (
@@ -334,7 +479,9 @@ export function TenderTableClient({
             className={styles.select}
             aria-label="Result"
             value={filters.result}
-            onChange={(e) => changeFilters((f) => ({ ...f, result: e.target.value }))}
+            onChange={(e) =>
+              changeFilters((f) => ({ ...f, result: e.target.value }))
+            }
           >
             <option value="all">All Results</option>
             <option value="__EMPTY__">(Running / no result)</option>
@@ -345,7 +492,13 @@ export function TenderTableClient({
             ))}
           </select>
           <div className={styles.colMenuWrap} ref={menuRef}>
-            <button ref={columnToggleRef} aria-expanded={showColMenu} aria-controls="table-columns" className={styles.colMenuButton} onClick={() => setShowColMenu((v) => !v)}>
+            <button
+              ref={columnToggleRef}
+              aria-expanded={showColMenu}
+              aria-controls="table-columns"
+              className={styles.colMenuButton}
+              onClick={() => setShowColMenu((v) => !v)}
+            >
               Columns
             </button>
             {showColMenu && (
@@ -355,7 +508,9 @@ export function TenderTableClient({
                     <input
                       type="checkbox"
                       checked={!!visibleCols[c.key]}
-                      onChange={() => setVisibleCols((v) => ({ ...v, [c.key]: !v[c.key] }))}
+                      onChange={() =>
+                        setVisibleCols((v) => ({ ...v, [c.key]: !v[c.key] }))
+                      }
                     />
                     {c.label}
                   </label>
@@ -365,7 +520,9 @@ export function TenderTableClient({
                     <input
                       type="checkbox"
                       checked={!!visibleCols[m.key]}
-                      onChange={() => setVisibleCols((v) => ({ ...v, [m.key]: !v[m.key] }))}
+                      onChange={() =>
+                        setVisibleCols((v) => ({ ...v, [m.key]: !v[m.key] }))
+                      }
                     />
                     {m.label}
                   </label>
@@ -376,9 +533,7 @@ export function TenderTableClient({
           <button className={styles.resetButton} onClick={resetFilters}>
             Reset filters
           </button>
-          <a href={exportHref} className={styles.resetButton}>
-            Export to Excel
-          </a>
+
           {isAdmin && (
             <Link href="/tenders/archive" className={styles.resetButton}>
               Archive
@@ -392,25 +547,66 @@ export function TenderTableClient({
         {isAdmin && selected.size > 0 && (
           <div className={styles.bulkBar}>
             <span className={styles.bulkCount}>{selected.size} selected</span>
-            <button className={styles.bulkGhost} onClick={() => setSelected(new Set())} disabled={bulkBusy}>
+            <button
+              className={styles.bulkGhost}
+              onClick={() => setSelected(new Set())}
+              disabled={bulkBusy}
+            >
               Clear
             </button>
             <span className={styles.bulkSpacer} />
-            <button className={styles.bulkButton} onClick={() => runBulk("archive")} disabled={bulkBusy}>
+            <button
+              className={styles.bulkButton}
+              onClick={() => setArchiveConfirm(true)}
+              disabled={bulkBusy}
+            >
               Archive selected
-            </button>
-            <button className={styles.bulkDanger} onClick={() => runBulk("delete")} disabled={bulkBusy}>
-              Delete permanently
             </button>
           </div>
         )}
 
-        {bulkMessage && <div role="status" className={styles.bulkMessage}>{bulkMessage}</div>}
+        {bulkMessage && (
+          <div role="status" className={styles.bulkMessage}>
+            {bulkMessage}
+          </div>
+        )}
 
-        {quickEditError && <div role="alert" className={styles.quickEditError}>{quickEditError}</div>}
+        {quickEditError && (
+          <div role="alert" className={styles.quickEditError}>
+            {quickEditError}
+          </div>
+        )}
 
+        <div className={styles.mobileCards}>
+          {pageItems.map((t) => (
+            <Link
+              href={tenderHref(t.id)}
+              key={t.id}
+              className={styles.tenderCard}
+            >
+              <span className={styles.cardTop}>
+                <span>{t.tenderNo || `Tender #${t.rowNo}`}</span>
+                <ResultBadge result={t.result} />
+              </span>
+              <strong>{t.product || t.customer}</strong>
+              <span>{t.customer}</span>
+              <span className={styles.cardMeta}>
+                <TrackBadge track={t.track} />
+                {t.area} · {t.period}
+              </span>
+              <span className={styles.cardMeta}>
+                Bid: {formatRupiah(t.nilaiPenawaran)}
+              </span>
+            </Link>
+          ))}
+        </div>
         {pageItems.length > 0 ? (
-          <div className={styles.scroll}>
+          <div
+            className={styles.scroll}
+            tabIndex={0}
+            role="region"
+            aria-label="Tender table; scroll horizontally for milestone columns"
+          >
             <table className={styles.table}>
               <thead>
                 <tr className={styles.theadRow}>
@@ -436,14 +632,22 @@ export function TenderTableClient({
                   {sortableHeader("tenderNo", "Tender No.")}
                   {sortableHeader("customer", "Customer")}
                   {sortableHeader("product", "Package")}
-                  {track !== "downstream" && sortableHeader("entitas", "Entity")}
+                  {sortableHeader("result", "Result")}
+                  {track !== "downstream" &&
+                    sortableHeader("entitas", "Entity")}
                   {visibleCols.period && sortableHeader("period", "Period")}
                   {visibleCols.oe && sortableHeader("oe", "OE (Rp)", "right")}
                   {visibleCols.qty && sortableHeader("qty", "Qty", "right")}
                   {sortableHeader("nilaiPenawaran", "Bid Value", "right")}
                   {visibleCols.pnl && sortableHeader("pnl", "P&L")}
-                  {visibleMilestones.map((m) => sortableHeader(m.key, shortHeader(m.label), "left", m.label))}
-                  {sortableHeader("result", "Result")}
+                  {visibleMilestones.map((m) =>
+                    sortableHeader(
+                      m.key,
+                      shortHeader(m.label),
+                      "left",
+                      m.label,
+                    ),
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -451,10 +655,13 @@ export function TenderTableClient({
                   <tr
                     key={t.id}
                     className={`${styles.bodyRow} ${selected.has(t.id) ? styles.rowSelected : ""}`}
-                    onClick={() => router.push(`/tenders/${t.id}`)}
+                    onClick={() => router.push(tenderHref(t.id))}
                   >
                     {isAdmin && (
-                      <td className={`${styles.td} ${styles.checkboxCol}`} onClick={(e) => e.stopPropagation()}>
+                      <td
+                        className={`${styles.td} ${styles.checkboxCol}`}
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <input
                           type="checkbox"
                           className={styles.checkbox}
@@ -464,49 +671,139 @@ export function TenderTableClient({
                         />
                       </td>
                     )}
-                    <td className={`${styles.td} ${styles.tdMuted}`}>{t.rowNo}</td>
+                    <td className={`${styles.td} ${styles.tdMuted}`}>
+                      {t.rowNo}
+                    </td>
                     {visibleCols.track && (track as string) === "all" && (
                       <td className={`${styles.td} ${styles.tdNoWrap}`}>
                         {t.track === "downstream" ? (
                           <TrackBadge track={t.track} />
                         ) : (
-                          <span style={{ color: "var(--color-fg3)" }}>{TRACK_LABELS.upstream}</span>
+                          <span style={{ color: "var(--color-fg3)" }}>
+                            {TRACK_LABELS.upstream}
+                          </span>
                         )}
                       </td>
                     )}
                     <td className={styles.td}>{t.area}</td>
-                    <td className={`${styles.td} ${styles.tdNoWrap}`} style={{ color: "var(--color-fg2)" }}>
-                      <Link href={`/tenders/${t.id}`} onClick={(e) => e.stopPropagation()}>
+                    <td
+                      className={`${styles.td} ${styles.tdNoWrap} ${styles.stickyIdentity}`}
+                      style={{ color: "var(--color-fg2)" }}
+                    >
+                      <Link
+                        href={tenderHref(t.id)}
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         {t.tenderNo || "View tender"}
                       </Link>
                     </td>
-                    <td className={`${styles.td} ${styles.tdEllipsis}`} style={{ maxWidth: 220 }} title={t.customer}>
+                    <td
+                      className={`${styles.td} ${styles.tdEllipsis}`}
+                      style={{ maxWidth: 220 }}
+                      title={t.customer}
+                    >
                       {t.customer || "—"}
                     </td>
-                    <td className={`${styles.td} ${styles.tdEllipsis}`} style={{ maxWidth: 340 }} title={t.product ?? undefined}>
+                    <td
+                      className={`${styles.td} ${styles.tdEllipsis}`}
+                      style={{ maxWidth: 340 }}
+                      title={t.product ?? undefined}
+                    >
                       {t.product || "—"}
                     </td>
-                    {track !== "downstream" && <td className={`${styles.td} ${styles.tdNoWrap}`}>{t.entitas || "—"}</td>}
-                    {visibleCols.period && <td className={styles.td}>{t.period}</td>}
-                    {visibleCols.oe && <td className={`${styles.td} ${styles.tdRight}`}>{formatRupiah(t.oe)}</td>}
-                    {visibleCols.qty && <td className={`${styles.td} ${styles.tdRight}`}>{t.qty ?? "—"}</td>}
-                    <td className={`${styles.td} ${styles.tdRight}`}>{formatRupiah(t.nilaiPenawaran)}</td>
-                    {visibleCols.pnl && <td className={styles.td}>{t.pnl ? "Yes" : "—"}</td>}
+                    <td className={`${styles.td} ${styles.tdNoWrap}`}>
+                      {isAdmin &&
+                      editingCell?.tenderId === t.id &&
+                      editingCell.column === "result" ? (
+                        <select
+                          aria-label={`Edit result for ${t.tenderNo || t.id}`}
+                          autoFocus
+                          defaultValue={t.result ?? ""}
+                          className={styles.inlineSelect}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) =>
+                            handleQuickResult(t.id, e.target.value)
+                          }
+                          onBlur={() => setEditingCell(null)}
+                        >
+                          <option value="">(Running)</option>
+                          {RESULT_ENUM.map((r) => (
+                            <option key={r} value={r}>
+                              {r}
+                            </option>
+                          ))}
+                        </select>
+                      ) : isAdmin ? (
+                        <button
+                          type="button"
+                          className={styles.cellButton}
+                          disabled={quickEditPending}
+                          aria-label={`Edit result for ${t.tenderNo || t.id}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingCell({
+                              tenderId: t.id,
+                              column: "result",
+                            });
+                          }}
+                        >
+                          <ResultBadge result={t.result} />
+                        </button>
+                      ) : (
+                        <ResultBadge result={t.result} />
+                      )}
+                    </td>
+                    {track !== "downstream" && (
+                      <td className={`${styles.td} ${styles.tdNoWrap}`}>
+                        {t.entitas || "—"}
+                      </td>
+                    )}
+                    {visibleCols.period && (
+                      <td className={styles.td}>{t.period}</td>
+                    )}
+                    {visibleCols.oe && (
+                      <td className={`${styles.td} ${styles.tdRight}`}>
+                        {formatRupiah(t.oe)}
+                      </td>
+                    )}
+                    {visibleCols.qty && (
+                      <td className={`${styles.td} ${styles.tdRight}`}>
+                        {t.qty ?? "—"}
+                      </td>
+                    )}
+                    <td className={`${styles.td} ${styles.tdRight}`}>
+                      {formatRupiah(t.nilaiPenawaran)}
+                    </td>
+                    {visibleCols.pnl && (
+                      <td className={styles.td}>{t.pnl ? "Yes" : "—"}</td>
+                    )}
                     {visibleMilestones.map((m) => {
                       const iso = t.milestones[m.key] ?? null;
                       const tone = dateTone(iso, t.result, anchor);
                       const isEditing =
-                        isAdmin && editingCell?.tenderId === t.id && editingCell.column === m.key;
+                        isAdmin &&
+                        editingCell?.tenderId === t.id &&
+                        editingCell.column === m.key;
                       if (isEditing) {
                         return (
-                          <td key={m.key} className={styles.dateCell} onClick={(e) => e.stopPropagation()}>
+                          <td
+                            key={m.key}
+                            className={styles.dateCell}
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <input
                               type="date"
                               aria-label={`Edit ${m.label} for ${t.tenderNo || t.id}`}
                               autoFocus
                               defaultValue={iso ?? ""}
                               className={styles.inlineDateInput}
-                              onChange={(e) => handleQuickMilestone(t.id, m.key, e.target.value)}
+                              onChange={(e) =>
+                                handleQuickMilestone(
+                                  t.id,
+                                  m.key,
+                                  e.target.value,
+                                )
+                              }
                               onBlur={() => setEditingCell(null)}
                             />
                           </td>
@@ -522,54 +819,26 @@ export function TenderTableClient({
                             <button
                               type="button"
                               className={styles.cellButton}
-                            disabled={quickEditPending}
+                              disabled={quickEditPending}
                               aria-label={`Edit ${m.label} for ${t.tenderNo || t.id}`}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setEditingCell({ tenderId: t.id, column: m.key });
+                                setEditingCell({
+                                  tenderId: t.id,
+                                  column: m.key,
+                                });
                               }}
                             >
                               {iso ? formatDateID(iso) : "—"}
                             </button>
-                          ) : (iso ? formatDateID(iso) : "—")}
+                          ) : iso ? (
+                            formatDateID(iso)
+                          ) : (
+                            "—"
+                          )}
                         </td>
                       );
                     })}
-                    <td className={`${styles.td} ${styles.tdNoWrap}`}>
-                      {isAdmin && editingCell?.tenderId === t.id && editingCell.column === "result" ? (
-                        <select
-                          aria-label={`Edit result for ${t.tenderNo || t.id}`}
-                          autoFocus
-                          defaultValue={t.result ?? ""}
-                          className={styles.inlineSelect}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => handleQuickResult(t.id, e.target.value)}
-                          onBlur={() => setEditingCell(null)}
-                        >
-                          <option value="">(Running)</option>
-                          {RESULT_ENUM.map((r) => (
-                            <option key={r} value={r}>
-                              {r}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        isAdmin ? (
-                          <button
-                            type="button"
-                            className={styles.cellButton}
-                            disabled={quickEditPending}
-                            aria-label={`Edit result for ${t.tenderNo || t.id}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingCell({ tenderId: t.id, column: "result" });
-                            }}
-                          >
-                            <ResultBadge result={t.result} />
-                          </button>
-                        ) : <ResultBadge result={t.result} />
-                      )}
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -577,7 +846,9 @@ export function TenderTableClient({
           </div>
         ) : (
           <div className={styles.emptyBox}>
-            <div className={styles.emptyText}>No tenders match this filter.</div>
+            <div className={styles.emptyText}>
+              No tenders match this filter.
+            </div>
             <button className={styles.emptyReset} onClick={resetFilters}>
               Reset filters
             </button>
@@ -592,7 +863,10 @@ export function TenderTableClient({
                 aria-label="Rows per page"
                 className={styles.select}
                 value={pageSize}
-                onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setPage(1);
+                }}
               >
                 {PAGE_SIZES.map((size) => (
                   <option key={size} value={size}>
@@ -623,6 +897,37 @@ export function TenderTableClient({
           </div>
         )}
       </div>
+      <Modal
+        open={archiveConfirm}
+        title={`Archive ${selected.size} selected tenders?`}
+        onClose={() => {
+          if (!bulkBusy) setArchiveConfirm(false);
+        }}
+      >
+        <p className="muted">
+          They will leave active lists and analytics. You can restore them from
+          Archive at any time.
+        </p>
+        <div className="dialog-actions">
+          <button
+            className="button button-secondary"
+            onClick={() => setArchiveConfirm(false)}
+            disabled={bulkBusy}
+          >
+            Cancel
+          </button>
+          <button
+            className="button button-primary"
+            disabled={bulkBusy}
+            onClick={() => {
+              setArchiveConfirm(false);
+              void runBulk();
+            }}
+          >
+            Confirm archive
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

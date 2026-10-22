@@ -11,6 +11,9 @@ import {
   setMilestoneTableVisibility,
 } from "@/lib/milestone-actions";
 import { TRACK_LABELS, type MilestoneTypeAdmin, type Track } from "@/lib/types";
+import { PageHeading } from "./PageHeading";
+import { Modal } from "./Modal";
+import workspace from "./Workspace.module.css";
 import shared from "./shared.module.css";
 import styles from "./MilestoneAdmin.module.css";
 
@@ -30,11 +33,30 @@ export interface MilestoneSection {
  * per-tender order lives in the tender edit form, which writes
  * `tenders.milestone_order`. */
 export function MilestoneAdmin({ sections }: { sections: MilestoneSection[] }) {
+  const [track, setTrack] = useState<Track>("upstream");
   return (
-    <div className={styles.page}>
-      {sections.map((section) => (
-        <Section key={section.track} section={section} />
-      ))}
+    <div className={workspace.page}>
+      <PageHeading
+        eyebrow="ADMINISTRATION"
+        title="Milestone catalog"
+        description="Manage the default steps and table columns for each business track."
+      />
+      <div className={workspace.pills} aria-label="Catalog track">
+        {sections.map((section) => (
+          <button
+            key={section.track}
+            aria-pressed={track === section.track}
+            onClick={() => setTrack(section.track)}
+          >
+            {TRACK_LABELS[section.track]}
+          </button>
+        ))}
+      </div>
+      {sections
+        .filter((section) => section.track === track)
+        .map((section) => (
+          <Section key={section.track} section={section} />
+        ))}
     </div>
   );
 }
@@ -47,6 +69,9 @@ function Section({ section }: { section: MilestoneSection }) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [newLabel, setNewLabel] = useState("");
+  const [archiveTarget, setArchiveTarget] = useState<MilestoneTypeAdmin | null>(
+    null,
+  );
   const [drafts, setDrafts] = useState<Record<string, string>>({});
 
   const active = milestoneTypes.filter((m) => !m.archivedAt);
@@ -56,10 +81,15 @@ function Section({ section }: { section: MilestoneSection }) {
     setBusyId(id);
     setMessage(null);
     startTransition(async () => {
-      const result = await fn();
-      setBusyId(null);
-      if (result?.error) setMessage(result.error);
-      else router.refresh();
+      try {
+        const result = await fn();
+        if (result?.error) setMessage(result.error);
+        else router.refresh();
+      } catch {
+        setMessage("The change could not be saved. Try again.");
+      } finally {
+        setBusyId(null);
+      }
     });
   }
 
@@ -79,10 +109,14 @@ function Section({ section }: { section: MilestoneSection }) {
     });
   }
 
-  function row(m: MilestoneTypeAdmin, index: number, list: MilestoneTypeAdmin[]) {
+  function row(
+    m: MilestoneTypeAdmin,
+    index: number,
+    list: MilestoneTypeAdmin[],
+  ) {
     const draft = drafts[m.id] ?? m.label;
     const dirty = draft.trim() !== m.label;
-    const busy = busyId === m.id;
+    const busy = busyId !== null;
     const isArchived = !!m.archivedAt;
 
     return (
@@ -99,7 +133,6 @@ function Section({ section }: { section: MilestoneSection }) {
           aria-label={`Name of ${m.label}`}
           onChange={(e) => setDrafts((d) => ({ ...d, [m.id]: e.target.value }))}
         />
-        <code className={styles.key}>{m.key}</code>
 
         <div className={styles.controls}>
           {!isArchived && (
@@ -127,7 +160,11 @@ function Section({ section }: { section: MilestoneSection }) {
                   type="checkbox"
                   checked={m.showInTable}
                   disabled={busy}
-                  onChange={(e) => run(m.id, () => setMilestoneTableVisibility(m.id, e.target.checked))}
+                  onChange={(e) =>
+                    run(m.id, () =>
+                      setMilestoneTableVisibility(m.id, e.target.checked),
+                    )
+                  }
                 />
                 In table
               </label>
@@ -143,7 +180,11 @@ function Section({ section }: { section: MilestoneSection }) {
           </button>
 
           {isArchived ? (
-            <button className={styles.button} disabled={busy} onClick={() => run(m.id, () => restoreMilestoneType(m.id))}>
+            <button
+              className={styles.button}
+              disabled={busy}
+              onClick={() => run(m.id, () => restoreMilestoneType(m.id))}
+            >
               Restore
             </button>
           ) : (
@@ -151,13 +192,7 @@ function Section({ section }: { section: MilestoneSection }) {
               className={styles.button}
               disabled={busy}
               onClick={() => {
-                if (
-                  confirm(
-                    `Archive "${m.label}"?\n\nIt disappears from the ${trackLabel.toLowerCase()} default order for every ${trackLabel.toLowerCase()} tender that hasn't set its own milestone order. No dates are deleted — restore it anytime and they come back.`
-                  )
-                ) {
-                  run(m.id, () => archiveMilestoneType(m.id));
-                }
+                setArchiveTarget(m);
               }}
             >
               Archive
@@ -170,10 +205,42 @@ function Section({ section }: { section: MilestoneSection }) {
 
   return (
     <div className={shared.card} style={{ marginBottom: 24 }}>
+      <Modal
+        open={archiveTarget !== null}
+        title="Archive milestone?"
+        onClose={() => setArchiveTarget(null)}
+      >
+        <p className="muted">
+          {archiveTarget?.label} will leave the default{" "}
+          {trackLabel.toLowerCase()} schedule. Saved dates are retained and the
+          step can be restored.
+        </p>
+        <div className="dialog-actions">
+          <button
+            className="button button-secondary"
+            onClick={() => setArchiveTarget(null)}
+          >
+            Cancel
+          </button>
+          <button
+            className="button button-danger"
+            onClick={() => {
+              if (archiveTarget)
+                run(archiveTarget.id, () =>
+                  archiveMilestoneType(archiveTarget.id),
+                );
+              setArchiveTarget(null);
+            }}
+          >
+            Confirm archive
+          </button>
+        </div>
+      </Modal>
       <div className={shared.cardHeader}>
         <h2 className={shared.cardTitle}>{trackLabel} milestones</h2>
         <span className={shared.cardMeta}>
-          Default order and names for {trackLabel.toLowerCase()} tenders — independent of the other track
+          Default order and names for {trackLabel.toLowerCase()} tenders —
+          independent of the other track
         </span>
       </div>
 
@@ -186,42 +253,53 @@ function Section({ section }: { section: MilestoneSection }) {
             value={newLabel}
             onChange={(e) => setNewLabel(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") handleAdd();
+              if (e.key === "Enter" && busyId === null) handleAdd();
             }}
           />
-          <button className={styles.buttonPrimary} disabled={busyId === "__new__" || !newLabel.trim()} onClick={handleAdd}>
+          <button
+            className={styles.buttonPrimary}
+            disabled={busyId !== null || !newLabel.trim()}
+            onClick={handleAdd}
+          >
             Add milestone
           </button>
         </div>
 
         {loadError && (
-          <div className={styles.errorBanner}>
+          <div role="alert" className={styles.errorBanner}>
             Could not load the {trackLabel.toLowerCase()} catalog: {loadError}
             <br />
-            If the <code>milestone_types</code> table or its <code>track</code> column does not exist yet, run{" "}
-            <code>supabase/migrations/0009_upstream_downstream.sql</code> in the Supabase SQL editor first.
+            Contact your administrator or try refreshing the page.
           </div>
         )}
 
-        {message && <div className={styles.message}>{message}</div>}
+        {message && (
+          <div role="alert" className={styles.message}>
+            {message}
+          </div>
+        )}
 
         <div className={styles.note}>
-          The order below is the default for every {trackLabel.toLowerCase()} tender that hasn&apos;t set its own.
-          &ldquo;In table&rdquo; is the starting visibility in the tender table&apos;s Columns menu — it does not delete
-          anything.
+          The order below is the default for every {trackLabel.toLowerCase()}{" "}
+          tender that hasn&apos;t set its own. &ldquo;In table&rdquo; is the
+          starting visibility in the tender table&apos;s Columns menu — it does
+          not delete anything.
         </div>
 
         {active.length ? (
           active.map((m, i) => row(m, i, active))
         ) : (
-          <div className={shared.emptyState}>No {trackLabel.toLowerCase()} milestones yet. Add one above.</div>
+          <div className={shared.emptyState}>
+            No {trackLabel.toLowerCase()} milestones yet. Add one above.
+          </div>
         )}
 
         {archived.length > 0 && (
           <>
             <h3 className={styles.archivedTitle}>Archived</h3>
             <div className={styles.archivedNote}>
-              Hidden from the default order. Their dates are still stored on every tender that has them.
+              Hidden from the default order. Their dates are still stored on
+              every tender that has them.
             </div>
             {archived.map((m, i) => row(m, i, archived))}
           </>

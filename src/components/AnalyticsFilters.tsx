@@ -1,72 +1,51 @@
 "use client";
-
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useTransition } from "react";
-import { TRACK_LABELS, TRACKS, type Track } from "@/lib/types";
-
-/** Track + area + period filter for the analytics dashboard.
- *
- * The selection lives in the URL (not in component state) so the filtered view
- * can be bookmarked, shared, and reached with the Back button — and so the page
- * itself stays a server component that does the filtering. */
+import { TRACKS, TRACK_LABELS, type Track } from "@/lib/types";
+import styles from "./Workspace.module.css";
 export function AnalyticsFilters({
   areas,
   periods,
+  customers = [],
   area,
   period,
+  customer = "all",
   track,
 }: {
   areas: string[];
   periods: string[];
+  customers?: string[];
   area: string;
   period: string;
-  /** "all" is a normal value here (both tracks side by side), not a missing
-   * one — unlike the tender list, where a page always shows exactly one. */
+  customer?: string;
   track: Track | "all";
 }) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
-
-  function apply(nextTrack: Track | "all", nextArea: string, nextPeriod: string) {
-    const params = new URLSearchParams();
-    if (nextTrack !== "all") params.set("track", nextTrack);
-    if (nextArea !== "all") params.set("area", nextArea);
-    if (nextPeriod !== "all") params.set("period", nextPeriod);
-    const query = params.toString();
-    // push, not replace: Back should return to the previous filter, not to the
-    // page before the dashboard.
-    startTransition(() => router.push(query ? `/?${query}` : "/"));
+  const path = usePathname();
+  const [pending, start] = useTransition();
+  function apply(
+    patch: Partial<{
+      track: string;
+      area: string;
+      period: string;
+      customer: string;
+    }>,
+  ) {
+    const selected = { track, area, period, customer, ...patch };
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(selected))
+      if (value !== "all") query.set(key, value);
+    start(() => router.push(query.size ? `${path}?${query}` : path));
   }
-
-  const selectStyle = {
-    padding: "5px 8px",
-    fontSize: 13,
-    borderRadius: 6,
-    border: "1px solid rgba(0,0,0,0.15)",
-    background: "transparent",
-    color: "inherit",
-  } as const;
-
-  const isFiltered = track !== "all" || area !== "all" || period !== "all";
-
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        flexWrap: "wrap",
-        marginBottom: 18,
-        opacity: pending ? 0.6 : 1,
-      }}
-    >
-      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
+    <div className={styles.filterBar} aria-busy={pending}>
+      <label>
         Track
         <select
+          className="control"
           value={track}
-          style={selectStyle}
           disabled={pending}
-          onChange={(e) => apply(e.target.value as Track | "all", area, period)}
+          onChange={(e) => apply({ track: e.target.value })}
         >
           <option value="all">Both tracks</option>
           {TRACKS.map((t) => (
@@ -76,59 +55,48 @@ export function AnalyticsFilters({
           ))}
         </select>
       </label>
-
-      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
-        Area
-        <select
-          value={area}
-          style={selectStyle}
-          disabled={pending}
-          onChange={(e) => apply(track, e.target.value, period)}
-        >
-          <option value="all">All areas</option>
-          {areas.map((a) => (
-            <option key={a} value={a}>
-              {a}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
-        Period
-        <select
-          value={period}
-          style={selectStyle}
-          disabled={pending}
-          onChange={(e) => apply(track, area, e.target.value)}
-        >
-          <option value="all">All periods</option>
-          {periods.map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      {isFiltered && (
-        <button
-          type="button"
-          onClick={() => apply("all", "all", "all")}
-          disabled={pending}
-          style={{
-            fontSize: 12.5,
-            padding: "5px 10px",
-            borderRadius: 6,
-            border: "1px solid rgba(0,0,0,0.15)",
-            background: "transparent",
-            color: "inherit",
-            cursor: "pointer",
-          }}
-        >
-          Reset
-        </button>
-      )}
+      {(
+        [
+          { key: "area", label: "Area", value: area, options: areas },
+          { key: "period", label: "Period", value: period, options: periods },
+          {
+            key: "customer",
+            label: "Customer",
+            value: customer,
+            options: customers,
+          },
+        ] as const
+      ).map((field) => (
+        <label key={field.key}>
+          {field.label}
+          <select
+            className="control"
+            value={field.value}
+            disabled={pending}
+            onChange={(e) => apply({ [field.key]: e.target.value })}
+          >
+            <option value="all">All {field.label.toLowerCase()}s</option>
+            {field.options.map((value) => (
+              <option key={value}>{value}</option>
+            ))}
+          </select>
+        </label>
+      ))}
+      <button
+        className="button button-secondary"
+        disabled={
+          pending ||
+          (track === "all" &&
+            area === "all" &&
+            period === "all" &&
+            customer === "all")
+        }
+        onClick={() =>
+          apply({ track: "all", area: "all", period: "all", customer: "all" })
+        }
+      >
+        {pending ? "Applying…" : "Reset filters"}
+      </button>
     </div>
   );
 }

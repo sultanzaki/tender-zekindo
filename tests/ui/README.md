@@ -1,17 +1,16 @@
 # UI regression checks
 
-Run `npm ci`, then `npx playwright install chromium` and `npm run test:ui`.
+Run `npm ci`, `npx playwright install chromium`, then `npm run test:ui`.
 For a system browser, use `CHROMIUM_PATH=/usr/bin/chromium npm run test:ui`.
 
-The runner bundles the real client components into a temporary local page and
-uses Chromium to exercise them. Next.js navigation and server actions are mocked;
-these tests never connect to Supabase or change application data. The temporary
-server, browser, and generated bundle are removed after the run.
+The runner bundles real client components into a temporary local page. Chromium
+exercises navigation, filters, saved views, forms/review, unsaved changes, access
+management, archive confirmations, milestone catalogs, document upload success/
+failure, calendar export and responsive layouts. Next.js navigation and server
+actions are mocked; no connected application data is modified. The temporary
+server, browser and generated bundles are removed after the run.
 
-Coverage includes mobile admin navigation, keyboard sorting and quick edits,
-filter/pagination/selection interactions, decimal precision, required wizard
-fields, user-list refresh and failed mutations, collapsed document sections,
-upload failure recovery, and bulk-action error feedback.
-
-These checks complement live read-only browser checks. They do not validate
-Supabase authorization, real uploads, login sessions, or database mutations.
+`npm test` separately checks calculations and actual server-action/read-model/
+Excel code with isolated persistence. For read-only checks of a running app, use
+`SMOKE_BASE_URL=http://localhost:3002 CHROMIUM_PATH=/usr/bin/chromium node tests/live-smoke.mjs`.
+See [REDESIGN_REPORT.md](../../REDESIGN_REPORT.md) for verification and limits.

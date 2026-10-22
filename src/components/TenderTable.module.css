@@ -1,5 +1,5 @@
 .wrap {
-  padding: 24px 32px;
+  padding: 32px;
 }
 
 @media (max-width: 900px) {
@@ -391,10 +391,180 @@
 }
 
 .sortButton {
-  border: 0; background: none; color: inherit; font: inherit; text-transform: inherit;
-  letter-spacing: inherit; padding: 0; cursor: pointer; text-align: inherit;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-align: inherit;
 }
 
-.title { margin: 0 0 16px; font-size: 22px; font-weight: 600; }
+.title {
+  margin: 0 0 16px;
+  font-size: 22px;
+  font-weight: 600;
+}
 
-.cellButton { border: 0; background: none; color: inherit; font: inherit; padding: 0; cursor: pointer; }
+.cellButton {
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+}
+
+.viewBar {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 20px 0;
+}
+.quickViews {
+  display: flex;
+  gap: 4px;
+}
+.quickViews button {
+  border: 1px solid var(--color-border);
+  padding: 8px 14px;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--color-fg2);
+}
+.quickViews [aria-pressed="true"] {
+  background: var(--zk-blue-50);
+  border-color: var(--zk-blue-200);
+  color: var(--color-primary-dark);
+}
+.mobileCards {
+  display: none;
+}
+.table {
+  min-width: 950px;
+}
+.table thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.scroll {
+  max-height: 70dvh;
+  overflow: auto;
+}
+.bodyRow:focus-within {
+  background: var(--zk-blue-50);
+}
+.colMenu {
+  right: 0;
+  left: auto;
+}
+@media (max-width: 600px) {
+  .wrap {
+    padding: 24px 16px;
+  }
+  .scroll {
+    display: none;
+  }
+  .mobileCards {
+    display: flex;
+    flex-direction: column;
+  }
+  .tenderCard {
+    padding: 16px;
+    border-bottom: 1px solid var(--color-border);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    color: var(--color-fg1);
+    font-size: 11px;
+  }
+  .tenderCard:hover {
+    text-decoration: none;
+    background: var(--zk-gray-50);
+  }
+  .tenderCard strong {
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.6;
+  }
+  .cardTop {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .cardTop > span:first-child {
+    font-size: 10px;
+    color: var(--color-fg3);
+  }
+  .cardMeta {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 10px;
+    color: var(--color-fg3);
+  }
+  .viewBar {
+    gap: 12px;
+  }
+  .colMenuWrap {
+    display: none;
+  }
+  .toolbar {
+    padding: 14px;
+    gap: 8px;
+  }
+  .select {
+    max-width: 100%;
+  }
+  .resultCount {
+    width: 100%;
+    margin: 4px 0 0;
+  }
+  .bulkBar {
+    display: none;
+  }
+  .pagination {
+    padding: 14px;
+  }
+  .pageNav {
+    gap: 8px;
+  }
+  .pageButton {
+    padding: 8px 10px;
+  }
+  .pageSizeGroup {
+    font-size: 10px;
+  }
+  .pageLabel {
+    font-size: 10px;
+  }
+}
+
+.stickyIdentity {
+  position: sticky;
+  left: 0;
+  background: #fff;
+  z-index: 1;
+  box-shadow: 1px 0 0 var(--color-border);
+}
+.theadRow .stickyIdentity {
+  z-index: 3;
+  background: var(--zk-gray-50);
+}
+.bodyRow:hover .stickyIdentity {
+  background: var(--zk-blue-50);
+}
+
+.tenderCard strong,
+.tenderCard > span {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}

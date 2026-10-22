@@ -1,236 +1,372 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getAuthContext } from "@/lib/auth/dal";
-import { restoreTenderForm } from "@/lib/actions";
 import { getTenderById } from "@/lib/tenders";
+import { getMilestoneTypes, getMilestoneLabels } from "@/lib/milestones";
 import { getTenderDocuments } from "@/lib/documents";
-import { buildDocumentSections, getTenderFileTree, type SectionDescriptor } from "@/lib/folders";
-import { getMilestoneTypes } from "@/lib/milestones";
 import {
-  dateTone,
+  getTenderFileTree,
+  buildDocumentSections,
+  type SectionDescriptor,
+} from "@/lib/folders";
+import { getTenderActivity } from "@/lib/activity";
+import {
+  resolveTenderMilestones,
   formatDateID,
   formatRupiah,
-  resolveTenderMilestones,
+  dateTone,
   todayISO,
-  type MilestoneCatalog,
 } from "@/lib/tender-logic";
+import { safeNextPath } from "@/lib/validation";
+import { PageHeading } from "@/components/PageHeading";
 import { ResultBadge } from "@/components/ResultBadge";
 import { TrackBadge } from "@/components/TrackBadge";
 import { DocumentChecklist } from "@/components/DocumentChecklist";
 import { DocumentExplorer } from "@/components/DocumentExplorer";
-import shared from "@/components/shared.module.css";
+import { ArchiveAction } from "@/components/ArchiveAction";
+import workspace from "@/components/Workspace.module.css";
 import styles from "@/components/TenderDetail.module.css";
-
 export const dynamic = "force-dynamic";
-
-const DOT_COLOR = {
+const tones = {
   empty: "var(--zk-gray-300)",
-  past: "var(--zk-success)",
-  urgent: "var(--zk-error)",
-  soon: "var(--zk-warning)",
-  normal: "var(--color-primary)",
-};
-
-const DATE_COLOR = {
-  empty: "var(--color-fg3)",
-  past: "var(--zk-success)",
+  past: "#247345",
   urgent: "var(--zk-error)",
   soon: "var(--zk-warning-text)",
-  normal: "var(--color-fg1)",
+  normal: "var(--color-primary)",
 };
-
-export default async function TenderDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const ctx = await getAuthContext();
-  const isAdmin = ctx?.profile.role === "admin";
-
-  const { id } = await params;
+export default async function Detail({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ tab?: string; returnTo?: string }>;
+}) {
+  const [{ id }, query, ctx] = await Promise.all([
+    params,
+    searchParams,
+    getAuthContext(),
+  ]);
   const tender = await getTenderById(id);
-  if (!tender) notFound();
-  // Independent reads — issued together rather than one after the other.
-  const [documents, milestoneTypes, fileTree] = await Promise.all([
-    getTenderDocuments(tender.id),
-    // This tender's own track only: the other track's milestones are unrelated
-    // to it, and a shared catalog would show them as its milestones.
-    getMilestoneTypes(tender.track),
-    getTenderFileTree(tender.id),
-  ]);
-
-  const anchor = todayISO();
-  // This tender's own milestone order/subset, falling back to the catalog order.
-  const catalog: MilestoneCatalog = { [tender.track]: milestoneTypes };
-  const milestones = resolveTenderMilestones(tender, catalog);
-
-  // The checklist keeps its own tree, and every milestone gets one — both in the
-  // same panel. Labels come from the catalog / checklist, so a rename shows up
-  // in both places.
-  const documentSections = buildDocumentSections(fileTree, [
-    ...documents.map(
-      (doc): SectionDescriptor => ({
-        id: `checklist:${doc.documentTypeId}`,
-        title: doc.label,
-        kind: "checklist",
-        milestoneKey: null,
-        documentTypeId: doc.documentTypeId,
-      })
-    ),
-    ...milestones.map(
-      (m): SectionDescriptor => ({
-        id: `milestone:${m.key}`,
-        title: m.label,
-        kind: "milestone",
-        milestoneKey: m.key,
-        documentTypeId: null,
-      })
-    ),
-  ]);
-
+  const isAdmin = ctx?.profile.role === "admin";
+  if (!tender || (tender.archivedAt && !isAdmin)) notFound();
+  const catalog = await getMilestoneTypes(tender.track);
+  const milestones = resolveTenderMilestones(tender, {
+    [tender.track]: catalog,
+  });
+  const tab =
+    query.tab === "documents"
+      ? "documents"
+      : query.tab === "activity" && isAdmin
+        ? "activity"
+        : "overview";
+  const returnTo =
+    query.returnTo && safeNextPath(query.returnTo).startsWith("/tenders")
+      ? safeNextPath(query.returnTo)
+      : tender.track === "downstream"
+        ? "/tenders?track=downstream"
+        : "/tenders";
+  const tabHref = (value: string) =>
+    `/tenders/${id}?${new URLSearchParams({ tab: value, returnTo })}`;
+  const [documents, tree] =
+    tab === "documents"
+      ? await Promise.all([getTenderDocuments(id), getTenderFileTree(id)])
+      : [[], null];
+  const historicalKeys = tree
+    ? [
+        ...new Set(
+          [...tree.folders, ...tree.files]
+            .map((row) => row.milestoneKey)
+            .filter(
+              (key): key is string =>
+                !!key && !milestones.some((m) => m.key === key),
+            ),
+        ),
+      ]
+    : [];
+  const historicalLabels = await getMilestoneLabels(historicalKeys);
+  const sections = tree
+    ? buildDocumentSections(tree, [
+        ...documents.map((doc): SectionDescriptor => ({
+          id: `checklist:${doc.documentTypeId}`,
+          title: doc.label,
+          kind: "checklist",
+          milestoneKey: null,
+          documentTypeId: doc.documentTypeId,
+        })),
+        ...historicalKeys.map((key, index): SectionDescriptor => ({
+          id: `historical:${key}`,
+          title:
+            historicalLabels.get(key) ||
+            `Additional milestone files ${index + 1}`,
+          kind: "milestone",
+          milestoneKey: key,
+          documentTypeId: null,
+        })),
+        ...milestones.map((m): SectionDescriptor => ({
+          id: `milestone:${m.key}`,
+          title: m.label,
+          kind: "milestone",
+          milestoneKey: m.key,
+          documentTypeId: null,
+        })),
+      ])
+    : [];
+  const activity = tab === "activity" ? await getTenderActivity(id) : null;
   return (
-    <div className={styles.page}>
-      <div className={styles.topBar}>
-        <Link href={tender.track === "downstream" ? "/tenders?track=downstream" : "/tenders"} className={styles.backLink} style={{ marginBottom: 0 }}>
-          &larr; Back to table
-        </Link>
-        {isAdmin && (
-          <div style={{ display: "flex", gap: 10 }}>
-            {tender.archivedAt ? (
-              <form action={restoreTenderForm.bind(null, tender.id)}>
-                <button type="submit" className={styles.editButton}>
-                  Restore
-                </button>
-              </form>
-            ) : (
-              <Link href={`/tenders/${tender.id}/edit`} className={styles.editButton}>
-                Edit Tender
-              </Link>
-            )}
-          </div>
-        )}
-      </div>
-
+    <div className={workspace.page}>
+      <Link href={returnTo} className={styles.backLink}>
+        ← Back to table
+      </Link>
+      <PageHeading
+        eyebrow={`${tender.tenderNo || `TENDER #${tender.rowNo}`} · ${tender.period}`}
+        title={tender.product || tender.customer}
+        description={
+          <>
+            {tender.customer} · {tender.area}
+          </>
+        }
+        actions={
+          <>
+            <TrackBadge track={tender.track} />
+            <ResultBadge result={tender.result} />
+            {isAdmin &&
+              (tender.archivedAt ? (
+                <ArchiveAction tenderId={id} action="restore" />
+              ) : (
+                <Link
+                  href={`/tenders/${id}/edit`}
+                  className="button button-primary"
+                >
+                  Edit tender
+                </Link>
+              ))}
+          </>
+        }
+      />
       {tender.archivedAt && (
-        <div className={styles.archivedBanner}>
-          Archived on {formatDateID(tender.archivedAt.slice(0, 10))}. It&apos;s hidden from the dashboard and table until restored.
+        <p className={workspace.note}>
+          Archived on {formatDateID(tender.archivedAt.slice(0, 10))}. Restore
+          this tender to include it in active views.
+        </p>
+      )}
+      <nav className={workspace.pills} aria-label="Tender sections">
+        {[
+          ["overview", "Overview"],
+          ["documents", "Documents"],
+          ...(isAdmin ? [["activity", "Activity"]] : []),
+        ].map(([key, label]) => (
+          <Link
+            key={key}
+            href={tabHref(key)}
+            aria-current={tab === key ? "page" : undefined}
+          >
+            {label}
+          </Link>
+        ))}
+      </nav>
+      {tab === "overview" && (
+        <>
+          <div className={workspace.metrics}>
+            {[
+              ["Entity / Consortium", tender.entitas || "—"],
+              ["Quantity", tender.qty?.toLocaleString("id-ID") ?? "—"],
+              ["OE value", formatRupiah(tender.oe)],
+              ["Our bid value", formatRupiah(tender.nilaiPenawaran)],
+            ].map(([label, value]) => (
+              <div key={label} className={workspace.metric}>
+                <span className={workspace.metricLabel}>{label}</span>
+                <strong className={styles.detailValue}>{value}</strong>
+                {label === "OE value" && tender.oeCatatan && (
+                  <span className={workspace.metricFoot}>
+                    {tender.oeCatatan}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className={workspace.grid}>
+            <section className={workspace.panel}>
+              <div className={workspace.panelHead}>
+                <div>
+                  <h2>Milestone timeline</h2>
+                  <p>
+                    Dates describe scheduled milestones, not completion
+                    confirmations.
+                  </p>
+                </div>
+              </div>
+              <div className={styles.panel}>
+                {milestones.map((m, i) => (
+                  <div key={m.key} className={styles.timelineRow}>
+                    <div className={styles.timelineRail}>
+                      <div
+                        className={styles.timelineDot}
+                        style={{
+                          background:
+                            tones[dateTone(m.date, tender.result, todayISO())],
+                        }}
+                      />
+                      {i < milestones.length - 1 && (
+                        <div className={styles.timelineLine} />
+                      )}
+                    </div>
+                    <div className={styles.timelineBody}>
+                      <div className={styles.timelineLabel}>{m.label}</div>
+                      <div className={styles.timelineDate}>
+                        {m.date ? formatDateID(m.date) : "Not scheduled"}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {!milestones.length && (
+                  <p className="muted">
+                    No milestones selected for this tender.
+                  </p>
+                )}
+              </div>
+            </section>
+            <div className={styles.sidePanels}>
+              <section className={workspace.panel}>
+                <div className={workspace.panelHead}>
+                  <h2>Remarks & context</h2>
+                </div>
+                <div className={styles.panel}>
+                  {tender.carryOver && (
+                    <p className={styles.carryOverBadge}>{tender.carryOver}</p>
+                  )}
+                  <p className={styles.remarksText}>
+                    {tender.remarks || "No remarks recorded."}
+                  </p>
+                  {tender.remark && (
+                    <>
+                      <h3 className={styles.panelTitle}>Additional remark</h3>
+                      <p className={styles.remarksText}>{tender.remark}</p>
+                    </>
+                  )}
+                </div>
+              </section>
+              {isAdmin && (
+                <section className={workspace.panel}>
+                  <div className={workspace.panelHead}>
+                    <h2>
+                      Internal notes <span className="muted">· admin only</span>
+                    </h2>
+                  </div>
+                  <div className={styles.panel}>
+                    <p className={styles.remarksText}>
+                      {tender.catatanInternal || "No internal notes."}
+                    </p>
+                  </div>
+                </section>
+              )}
+              <section className={workspace.panel}>
+                <div className={workspace.panelHead}>
+                  <h2>Tender record</h2>
+                </div>
+                <div className={styles.panel}>
+                  <p className="muted">
+                    {tender.pnl ? "P&L flagged" : "No P&L flag"}
+                    <br />
+                    Last updated:{" "}
+                    {tender.updatedAt
+                      ? formatDateID(tender.updatedAt.slice(0, 10))
+                      : "—"}
+                    {isAdmin && tender.updatedByName
+                      ? ` by ${tender.updatedByName}`
+                      : ""}
+                  </p>
+                  <Link
+                    href={tabHref("documents")}
+                    className="button button-secondary"
+                  >
+                    Open documents →
+                  </Link>
+                </div>
+              </section>
+            </div>
+          </div>
+        </>
+      )}
+      {tab === "documents" && (
+        <div className={workspace.grid}>
+          <section className={workspace.panel}>
+            <div className={workspace.panelHead}>
+              <div>
+                <h2>Document workspace</h2>
+                <p>Files organized by checklist item and milestone.</p>
+              </div>
+            </div>
+            <div className={styles.panel}>
+              <DocumentExplorer
+                tenderId={id}
+                sections={sections}
+                isAdmin={isAdmin}
+              />
+            </div>
+          </section>
+          <section className={workspace.panel}>
+            <div className={workspace.panelHead}>
+              <div>
+                <h2>Readiness checklist</h2>
+                <p>
+                  {documents.filter((d) => d.checked).length} of{" "}
+                  {documents.length} items ready
+                </p>
+              </div>
+            </div>
+            <div className={styles.panel}>
+              <DocumentChecklist
+                tenderId={id}
+                documents={documents}
+                isAdmin={isAdmin}
+              />
+            </div>
+          </section>
         </div>
       )}
-
-      <div className={`${shared.card} ${styles.headerCard}`}>
-        <div className={styles.headerTop}>
-          <div>
-            <div className={styles.metaLine}>
-              <span className={styles.metaText}>{tender.tenderNo || "—"}</span>
-              <span className={styles.metaDivider}>&middot;</span>
-              <span className={styles.metaText}>{tender.period}</span>
-              <span className={styles.metaDivider}>&middot;</span>
-              <span className={styles.metaText}>{tender.area}</span>
-            </div>
-            <h1 className={styles.title}>{tender.product || "—"}</h1>
-            <div className={styles.customer}>{tender.customer || "—"}</div>
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <TrackBadge track={tender.track} />
-            {tender.pnl && <span className={styles.pnlBadge}>P&amp;L</span>}
-            <ResultBadge result={tender.result} />
-          </div>
-        </div>
-        <div className={styles.factGrid}>
-          <div>
-            <div className={styles.factLabel}>Entity / Consortium</div>
-            <div className={styles.factValue}>{tender.entitas || "—"}</div>
-          </div>
-          <div>
-            <div className={styles.factLabel}>Qty</div>
-            <div className={styles.factValue}>{tender.qty ?? "—"}</div>
-          </div>
-          <div>
-            <div className={styles.factLabel}>OE (Rp)</div>
-            <div className={styles.factValue}>
-              {formatRupiah(tender.oe)}
-              {tender.oeCatatan && <span className={styles.factNote}> ({tender.oeCatatan})</span>}
+      {tab === "activity" && activity && (
+        <section className={workspace.panel}>
+          <div className={workspace.panelHead}>
+            <div>
+              <h2>Activity history</h2>
+              <p>Latest 50 recorded changes · administrator access</p>
             </div>
           </div>
-          <div>
-            <div className={styles.factLabel}>Our Bid Value</div>
-            <div className={styles.factValue}>{formatRupiah(tender.nilaiPenawaran)}</div>
-          </div>
-        </div>
-      </div>
-
-      <div className={styles.grid2}>
-        <div className={`${shared.card} ${styles.panel}`}>
-          <h2 className={styles.panelTitle}>Milestone Timeline</h2>
-          {milestones.map((m, i) => {
-            const iso = m.date;
-            const tone = dateTone(iso, tender.result, anchor);
-            const isLast = i === milestones.length - 1;
-            return (
-              <div key={m.key} className={styles.timelineRow}>
-                <div className={styles.timelineRail}>
-                  <div className={styles.timelineDot} style={{ background: DOT_COLOR[tone] }} />
-                  {!isLast && <div className={styles.timelineLine} />}
-                </div>
-                <div className={styles.timelineBody}>
-                  <div className={styles.timelineLabel}>{m.label}</div>
-                  <div className={styles.timelineDate} style={{ color: DATE_COLOR[tone] }}>
-                    {iso ? formatDateID(iso) : "Not yet set"}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          <div className={`${shared.card} ${styles.panel}`}>
-            <h2 className={styles.remarksTitle}>Remarks</h2>
-            {tender.carryOver && <div className={styles.carryOverBadge}>{tender.carryOver}</div>}
-            <div className={styles.remarksText}>{tender.remarks || "No notes yet."}</div>
-            {tender.remark && (
-              <>
-                <div className={styles.factLabel} style={{ marginTop: 14 }}>
-                  Remark
-                </div>
-                <div className={styles.remarksText} style={{ minHeight: 0 }}>
-                  {tender.remark}
-                </div>
-              </>
-            )}
-          </div>
-
-          <div className={`${shared.card} ${styles.panel}`}>
-            <h2 className={styles.remarksTitle}>Documents</h2>
-            <DocumentChecklist tenderId={tender.id} documents={documents} isAdmin={isAdmin} />
-
-            {/* Two trees in one panel: one section per checklist item, one per
-                milestone. Assembled from a single flat read — see
-                src/lib/folders.ts. */}
-            <div style={{ marginTop: 14 }}>
-              <DocumentExplorer tenderId={tender.id} sections={documentSections} isAdmin={isAdmin} />
-            </div>
-          </div>
-
-          {isAdmin && tender.catatanInternal && (
-            <div className={`${shared.card} ${styles.panel}`}>
-              <h2 className={styles.remarksTitle}>
-                Internal Notes <span className={styles.factNote}>(admin only)</span>
-              </h2>
-              <div className={styles.remarksText} style={{ minHeight: 0 }}>
-                {tender.catatanInternal}
-              </div>
-            </div>
+          {activity.error && (
+            <p className="feedback feedback-error" role="alert">
+              {activity.error}
+            </p>
           )}
-
-          {isAdmin && (
-            <div className={styles.auditFooter}>
-              {tender.createdByName && <div>Added by {tender.createdByName}</div>}
-              {tender.updatedByName && (
-                <div>
-                  Last updated by {tender.updatedByName} on {formatDateID(tender.updatedAt.slice(0, 10))}
-                </div>
-              )}
+          {activity.events.map((event) => (
+            <div key={event.id} className={workspace.row}>
+              <div className={workspace.rowMain}>
+                <span className={workspace.rowTitle}>
+                  {event.actor_name} · {event.action}
+                </span>
+                <span className={workspace.rowSub}>
+                  {event.changes
+                    ? Object.keys(event.changes)
+                        .filter((key) => key !== "updated_by")
+                        .map((key) => key.replace(/_/g, " "))
+                        .join(", ")
+                    : "Tender status changed"}
+                </span>
+              </div>
+              <span className={workspace.rowMeta}>
+                {new Intl.DateTimeFormat("en-GB", {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                  timeZone: "Asia/Jakarta",
+                }).format(new Date(event.created_at))}{" "}
+                WIB
+              </span>
             </div>
+          ))}
+          {!activity.events.length && !activity.error && (
+            <div className={workspace.empty}>No activity recorded yet.</div>
           )}
-        </div>
-      </div>
+        </section>
+      )}
     </div>
   );
 }

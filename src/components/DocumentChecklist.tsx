@@ -1,7 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { addDocumentType, removeTenderDocumentFile, toggleTenderDocument, uploadTenderDocument } from "@/lib/document-actions";
+import {
+  addDocumentType,
+  removeTenderDocumentFile,
+  toggleTenderDocument,
+} from "@/lib/document-actions";
 import type { TenderDocument } from "@/lib/types";
 import styles from "./DocumentChecklist.module.css";
 
@@ -22,18 +26,11 @@ export function DocumentChecklist({
   function handleToggle(documentTypeId: string, checked: boolean) {
     setError(null);
     startTransition(async () => {
-      const result = await toggleTenderDocument(tenderId, documentTypeId, checked);
-      if (result?.error) setError(result.error);
-    });
-  }
-
-  function handleFileChange(documentTypeId: string, file: File | undefined) {
-    if (!file) return;
-    setError(null);
-    const formData = new FormData();
-    formData.set("file", file);
-    startTransition(async () => {
-      const result = await uploadTenderDocument(tenderId, documentTypeId, formData);
+      const result = await toggleTenderDocument(
+        tenderId,
+        documentTypeId,
+        checked,
+      );
       if (result?.error) setError(result.error);
     });
   }
@@ -66,31 +63,40 @@ export function DocumentChecklist({
           <input
             type="checkbox"
             aria-label={doc.label}
+            id={`document-ready-${doc.documentTypeId}`}
             className={styles.checkbox}
             checked={doc.checked}
             disabled={!isAdmin || isPending}
             onChange={(e) => handleToggle(doc.documentTypeId, e.target.checked)}
           />
-          <span className={styles.label}>{doc.label}</span>
+          <label
+            htmlFor={`document-ready-${doc.documentTypeId}`}
+            className={styles.label}
+          >
+            {doc.label}
+          </label>
           {doc.fileUrl && doc.fileName ? (
             <>
-              <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer" className={styles.fileLink} title={doc.fileName}>
+              <a
+                href={doc.fileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.fileLink}
+                title={doc.fileName}
+              >
                 {doc.fileName}
               </a>
               {isAdmin && (
-                <button className={styles.removeLink} onClick={() => handleRemoveFile(doc.documentTypeId)} disabled={isPending}>
+                <button
+                  className={styles.removeLink}
+                  onClick={() => handleRemoveFile(doc.documentTypeId)}
+                  disabled={isPending}
+                >
                   Remove
                 </button>
               )}
             </>
-          ) : (
-            isAdmin && (
-              <label className={styles.uploadLabel}>
-                Upload
-                <input type="file" disabled={isPending} onChange={(e) => { handleFileChange(doc.documentTypeId, e.target.files?.[0]); e.target.value = ""; }} />
-              </label>
-            )
-          )}
+          ) : null}
         </div>
       ))}
 
@@ -106,7 +112,11 @@ export function DocumentChecklist({
                 aria-label="New document type name"
                 autoFocus
               />
-              <button className={styles.addButton} onClick={handleAddType} disabled={isPending || !newLabel.trim()}>
+              <button
+                className={styles.addButton}
+                onClick={handleAddType}
+                disabled={isPending || !newLabel.trim()}
+              >
                 Add
               </button>
               <button
@@ -120,14 +130,21 @@ export function DocumentChecklist({
               </button>
             </div>
           ) : (
-            <button className={styles.addToggle} onClick={() => setShowAdd(true)}>
+            <button
+              className={styles.addToggle}
+              onClick={() => setShowAdd(true)}
+            >
               + Add document type
             </button>
           )}
         </>
       )}
 
-      {error && <div role="alert" className={styles.error}>{error}</div>}
+      {error && (
+        <div role="alert" className={styles.error}>
+          {error}
+        </div>
+      )}
     </div>
   );
 }

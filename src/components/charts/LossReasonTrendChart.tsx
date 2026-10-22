@@ -1,6 +1,15 @@
 "use client";
 
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 import type { TooltipContentProps } from "recharts";
 import { LOSS_CATEGORIES } from "@/lib/tender-logic";
 import type { LossReasonPeriodRow } from "@/lib/analytics";
@@ -13,7 +22,7 @@ import styles from "./charts.module.css";
 const LOSS_COLOR_HEX: Record<string, string> = {
   "Price Loss": CHART_COLORS.error,
   "Technical Loss": CHART_COLORS.warning,
-  "PQ Admin Loss": "#0891b2",       // cyan-600
+  "PQ Admin Loss": "#0891b2", // cyan-600
   "Registration Loss": CHART_COLORS.gray500,
 };
 
@@ -40,15 +49,22 @@ function CustomTooltip({ active, payload, label }: TooltipContentProps) {
         .filter((p) => (p.value as number) > 0)
         .map((p) => (
           <div className={styles.tooltipRow} key={String(p.dataKey)}>
-            <span className={styles.tooltipDot} style={{ background: p.color }} />
-            {p.name}: {p.value}%
+            <span
+              className={styles.tooltipDot}
+              style={{ background: p.color }}
+            />
+            {p.name}: {Number(p.value).toFixed(1).replace(/\.0$/, "")}%
           </div>
         ))}
     </div>
   );
 }
 
-export function LossReasonTrendChart({ data }: { data: LossReasonPeriodRow[] }) {
+export function LossReasonTrendChart({
+  data,
+}: {
+  data: LossReasonPeriodRow[];
+}) {
   if (data.length === 0) {
     return (
       <div className={styles.chartWrap}>
@@ -60,7 +76,10 @@ export function LossReasonTrendChart({ data }: { data: LossReasonPeriodRow[] }) 
   return (
     <div className={styles.chartWrap}>
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={flat} margin={{ top: 8, right: 16, left: -12, bottom: 0 }}>
+        <BarChart
+          data={flat}
+          margin={{ top: 8, right: 16, left: -12, bottom: 0 }}
+        >
           <CartesianGrid stroke={CHART_COLORS.grid} vertical={false} />
           <XAxis
             dataKey="period"
@@ -76,10 +95,21 @@ export function LossReasonTrendChart({ data }: { data: LossReasonPeriodRow[] }) 
             tickLine={false}
             width={40}
           />
-          <Tooltip content={CustomTooltip} cursor={{ fill: CHART_COLORS.grid, opacity: 0.4 }} />
+          <Tooltip
+            content={CustomTooltip}
+            cursor={{ fill: CHART_COLORS.grid, opacity: 0.4 }}
+          />
           <Legend wrapperStyle={{ fontSize: 11 }} />
           {LOSS_CATEGORIES.map((c) => (
-            <Bar key={c.label} dataKey={c.label} name={c.label} stackId="loss" fill={LOSS_COLOR_HEX[c.label]} maxBarSize={40} />
+            <Bar
+              isAnimationActive={false}
+              key={c.label}
+              dataKey={c.label}
+              name={c.label}
+              stackId="loss"
+              fill={LOSS_COLOR_HEX[c.label]}
+              maxBarSize={40}
+            />
           ))}
         </BarChart>
       </ResponsiveContainer>

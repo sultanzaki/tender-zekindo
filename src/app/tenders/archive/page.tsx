@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth/dal";
-import { deleteTenderPermanentlyForm, restoreTenderForm } from "@/lib/actions";
+import { ArchiveAction } from "@/components/ArchiveAction";
+import { PageHeading } from "@/components/PageHeading";
+import workspace from "@/components/Workspace.module.css";
 import { getArchivedTenders } from "@/lib/tenders";
 import { formatDateID } from "@/lib/tender-logic";
-import { ConfirmButton } from "@/components/ConfirmButton";
 import { TrackBadge } from "@/components/TrackBadge";
 import shared from "@/components/shared.module.css";
 import tableStyles from "@/components/TenderTable.module.css";
-import styles from "@/components/ArchivedTable.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -16,8 +16,17 @@ export default async function ArchivedTendersPage() {
   const tenders = await getArchivedTenders();
 
   return (
-    <div style={{ padding: "24px 32px" }}>
-      <Link href="/tenders" className={shared.cardMeta} style={{ display: "inline-block", marginBottom: 16 }}>
+    <div className={workspace.page}>
+      <PageHeading
+        eyebrow="ADMINISTRATION"
+        title="Archived tenders"
+        description="Restore archived work or permanently remove records you no longer need."
+      />
+      <Link
+        href="/tenders"
+        className={shared.cardMeta}
+        style={{ display: "inline-block", marginBottom: 16 }}
+      >
         &larr; Back to table
       </Link>
       <div className={shared.card}>
@@ -40,35 +49,41 @@ export default async function ArchivedTendersPage() {
               </thead>
               <tbody>
                 {tenders.map((t) => (
-                  <tr key={t.id} className={tableStyles.bodyRow} style={{ cursor: "default" }}>
+                  <tr
+                    key={t.id}
+                    className={tableStyles.bodyRow}
+                    style={{ cursor: "default" }}
+                  >
                     <td className={tableStyles.td}>{t.area}</td>
                     <td className={`${tableStyles.td} ${tableStyles.tdNoWrap}`}>
                       {t.tenderNo || "—"} <TrackBadge track={t.track} />
                     </td>
-                    <td className={`${tableStyles.td} ${tableStyles.tdEllipsis}`} style={{ maxWidth: 200 }} title={t.customer}>
+                    <td
+                      className={`${tableStyles.td} ${tableStyles.tdEllipsis}`}
+                      style={{ maxWidth: 200 }}
+                      title={t.customer}
+                    >
                       <Link href={`/tenders/${t.id}`}>{t.customer}</Link>
                     </td>
-                    <td className={`${tableStyles.td} ${tableStyles.tdEllipsis}`} style={{ maxWidth: 320 }} title={t.product ?? undefined}>
+                    <td
+                      className={`${tableStyles.td} ${tableStyles.tdEllipsis}`}
+                      style={{ maxWidth: 320 }}
+                      title={t.product ?? undefined}
+                    >
                       {t.product || "—"}
                     </td>
                     <td className={`${tableStyles.td} ${tableStyles.tdNoWrap}`}>
-                      {t.archivedAt ? formatDateID(t.archivedAt.slice(0, 10)) : "—"}
+                      {t.archivedAt
+                        ? formatDateID(t.archivedAt.slice(0, 10))
+                        : "—"}
                     </td>
-                    <td className={`${tableStyles.td} ${tableStyles.tdNoWrap}`} style={{ textAlign: "right" }}>
+                    <td
+                      className={`${tableStyles.td} ${tableStyles.tdNoWrap}`}
+                      style={{ textAlign: "right" }}
+                    >
                       <div style={{ display: "inline-flex", gap: 12 }}>
-                        <form action={restoreTenderForm.bind(null, t.id)}>
-                          <button type="submit" className={styles.restoreButton}>
-                            Restore
-                          </button>
-                        </form>
-                        <form action={deleteTenderPermanentlyForm.bind(null, t.id)}>
-                          <ConfirmButton
-                            confirmText="Permanently delete this tender? This cannot be undone."
-                            className={styles.deleteButton}
-                          >
-                            Delete
-                          </ConfirmButton>
-                        </form>
+                        <ArchiveAction tenderId={t.id} action="restore" />
+                        <ArchiveAction tenderId={t.id} action="delete" />
                       </div>
                     </td>
                   </tr>

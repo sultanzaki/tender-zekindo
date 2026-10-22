@@ -1,331 +1,280 @@
 "use client";
-
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { logout } from "@/lib/auth/actions";
 import type { Profile } from "@/lib/types";
+import { Icon } from "./Icon";
 import styles from "./TopNav.module.css";
-
-/** "+ New Tender", aware of which track you are looking at.
- *
- * Reads the query string rather than taking a prop because the nav sits in the
- * root layout, which cannot see a page's searchParams. Suspense-wrapped at the
- * call site because useSearchParams suspends while the URL is resolved. */
-function NewTenderLink({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?: () => void } = {}) {
+const pages = [
+  { href: "/", label: "Overview", icon: "overview" },
+  { href: "/tenders", label: "Tenders", icon: "tenders" },
+  { href: "/analytics", label: "Analytics", icon: "analytics" },
+  { href: "/notifications", label: "Deadlines", icon: "notifications" },
+] as const;
+const adminPages = [
+  { href: "/tenders/archive", label: "Archive", icon: "archive" },
+  { href: "/admin/users", label: "Manage users", icon: "users" },
+  { href: "/admin/milestones", label: "Manage milestones", icon: "milestones" },
+] as const;
+function CreateLink() {
   const params = useSearchParams();
-  const href = params.get("track") === "downstream" ? "/tenders/new?track=downstream" : "/tenders/new";
   return (
-    <Link href={href} className={mobile ? styles.mobileItem : styles.newButton} onClick={onNavigate}>
-      {mobile ? "+ New Tender" : <>
-        <span className={styles.newButtonFull}>+ New Tender</span>
-        <span className={styles.newButtonShort}>+ New</span>
-      </>}
+    <Link
+      className="button button-primary"
+      href={
+        params.get("track") === "downstream"
+          ? "/tenders/new?track=downstream"
+          : "/tenders/new"
+      }
+    >
+      <Icon name="plus" />
+      New tender
     </Link>
   );
 }
-
-const NAV_ITEMS = [
-  { href: "/", label: "Analytics" },
-  { href: "/tenders", label: "Tenders" },
-] as const;
-
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
-}
-
-export function TopNav({ profile, notificationCount = 0 }: { profile: Profile | null; notificationCount?: number }) {
-  const pathname = usePathname();
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [hamburgerOpen, setHamburgerOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const headerRef = useRef<HTMLElement>(null);
-  const mobileToggleRef = useRef<HTMLButtonElement>(null);
-
+export function TopNav({
+  profile,
+  notificationCount = 0,
+  children,
+}: {
+  profile: Profile | null;
+  notificationCount?: number;
+  children?: React.ReactNode;
+}) {
+  const path = usePathname();
+  const account = useRef<HTMLDialogElement>(null);
+  const search = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    if (!hamburgerOpen) return;
-    function dismiss(event: PointerEvent) {
-      if (!headerRef.current?.contains(event.target as Node)) setHamburgerOpen(false);
+    function shortcut(event: KeyboardEvent) {
+      if (
+        event.key !== "/" ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        account.current?.open
+      )
+        return;
+      if (
+        (event.target as HTMLElement)?.closest(
+          "input, textarea, select, [contenteditable=true]",
+        )
+      )
+        return;
+      event.preventDefault();
+      search.current?.focus();
     }
-    function escape(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setHamburgerOpen(false);
-        mobileToggleRef.current?.focus();
-      }
-    }
-    document.addEventListener("pointerdown", dismiss);
-    document.addEventListener("keydown", escape);
-    return () => {
-      document.removeEventListener("pointerdown", dismiss);
-      document.removeEventListener("keydown", escape);
-    };
-  }, [hamburgerOpen]);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    function onPointerDown(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
-    }
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setMenuOpen(false);
-    }
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [menuOpen]);
-
-  // Navigating away should never leave the menu hanging open. Handled on the
-  // links' own onClick rather than an effect on `pathname`: calling setState
-  // synchronously in an effect body causes a cascading render (react-hooks/
-  // set-state-in-effect), and closing on click is the actual user intent.
-
-  if (pathname === "/login") {
-    return null;
-  }
-
+    document.addEventListener("keydown", shortcut);
+    return () => document.removeEventListener("keydown", shortcut);
+  }, []);
+  if (path === "/login") return <>{children}</>;
   const isAdmin = profile?.role === "admin";
-
+  function active(href: string) {
+    if (href === "/") return path === "/";
+    if (href === "/tenders")
+      return (
+        path.startsWith("/tenders") && !path.startsWith("/tenders/archive")
+      );
+    return path.startsWith(href);
+  }
+  const current = [...adminPages, ...pages].find((p) => active(p.href));
   return (
-    <header className={styles.bar} ref={headerRef}>
-      <div className={styles.left}>
-        <Link href="/" className={styles.brand}>
-          <Image src="/logo.png" alt="Zekindo" width={72} height={24} priority />
-          <span className={styles.brandTitle}>Tender Management</span>
+    <div className={styles.shell}>
+      <a className="skip-link" href="#main-content">
+        Skip to content
+      </a>
+      <aside className={styles.sidebar}>
+        <Link className={styles.brand} href="/">
+          <Image
+            src="/logo.png"
+            alt="Zekindo"
+            width={94}
+            height={32}
+            priority
+          />
+          <span>Tender workspace</span>
         </Link>
-        <nav className={styles.tabs} aria-label="Main">
-          {NAV_ITEMS.map((item) => {
-            const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`${styles.tab} ${active ? styles.tabActive : ""}`}
-                aria-current={active ? "page" : undefined}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-      </div>
-
-      <div className={styles.right}>
-        <button
-          type="button"
-          className={styles.hamburger}
-          ref={mobileToggleRef}
-          aria-controls="mobile-navigation"
-          onClick={() => setHamburgerOpen((v) => !v)}
-          aria-label={hamburgerOpen ? "Close menu" : "Open menu"}
-          aria-expanded={hamburgerOpen}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            {hamburgerOpen ? (
-              <path d="M18 6 6 18M6 6l12 12" />
-            ) : (
-              <path d="M3 12h18M3 6h18M3 18h18" />
-            )}
-          </svg>
-        </button>
-        {profile && isAdmin && (
-          <Suspense
-            fallback={
-              <Link href="/tenders/new" className={styles.newButton}>
-                <span className={styles.newButtonFull}>+ New Tender</span>
-                <span className={styles.newButtonShort}>+ New</span>
-              </Link>
-            }
-          >
-            <NewTenderLink />
-          </Suspense>
-        )}
-
-        <Link href="/notifications" className={styles.iconButton} aria-label="Notifications">
-          <svg
-            width="19"
-            height="19"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-          </svg>
-          {notificationCount > 0 && (
-            <span className={styles.bellBadge}>{notificationCount > 9 ? "9+" : notificationCount}</span>
-          )}
-        </Link>
-
-        {profile ? (
-          <div className={styles.userWrap} ref={menuRef}>
-          <button
-            type="button"
-            className={`${styles.userButton} ${menuOpen ? styles.userButtonOpen : ""}`}
-            onClick={() => setMenuOpen((v) => !v)}
-            aria-label={`Account: ${profile.name}`}
-            aria-expanded={menuOpen}
-          >
-            <span className={styles.avatar}>{initials(profile.name) || "?"}</span>
-            <span className={styles.userMeta}>
-              <span className={styles.userName}>{profile.name}</span>
-              <span className={styles.userRole}>{profile.role}</span>
-            </span>
-            <svg
-              className={styles.chevron}
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+        <div className={styles.navLabel}>WORKSPACE</div>
+        <nav aria-label="Main navigation" className={styles.navigation}>
+          {pages.map((p) => (
+            <Link
+              key={p.href}
+              href={p.href}
+              className={`${styles.navLink} ${active(p.href) ? styles.active : ""}`}
+              aria-current={active(p.href) ? "page" : undefined}
             >
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </button>
-
-          {menuOpen && (
-            <div className={styles.menu}>
-              <div className={styles.menuHeader}>
-                <div className={styles.menuAvatar}>{initials(profile.name) || "?"}</div>
-                <div style={{ minWidth: 0 }}>
-                  <div className={styles.menuName}>{profile.name}</div>
-                  <div className={styles.menuEmail}>{profile.email}</div>
-                </div>
-              </div>
-
-              {isAdmin ? (
-                <>
-                  <Link
-                    href="/tenders/archive"
-                    className={styles.menuItem}
-
-                    onClick={() => setMenuOpen(false)}
-                  >
-                    Archived tenders
-                  </Link>
-                  <Link
-                    href="/admin/users"
-                    className={styles.menuItem}
-
-                    onClick={() => setMenuOpen(false)}
-                  >
-                    Manage users
-                  </Link>
-                  <Link
-                    href="/admin/milestones"
-                    className={styles.menuItem}
-
-                    onClick={() => setMenuOpen(false)}
-                  >
-                    Manage milestones
-                  </Link>
-                </>
-              ) : (
-                <div className={styles.menuNote}>Read-only access — ask an admin for changes.</div>
+              <Icon name={p.icon} />
+              {p.label}
+              {p.href === "/notifications" && notificationCount > 0 && (
+                <span className={styles.count}>
+                  {notificationCount > 99 ? "99+" : notificationCount}
+                </span>
               )}
-
-              <div className={styles.menuDivider} />
-              <form action={logout} onSubmit={() => setMenuOpen(false)}>
-                <button type="submit" className={styles.menuItemDanger}>
-                  Sign out
-                </button>
-              </form>
-            </div>
-          )}
+            </Link>
+          ))}
+        </nav>
+        {isAdmin && (
+          <>
+            <div className={styles.navLabel}>ADMINISTRATION</div>
+            <nav aria-label="Administration" className={styles.navigation}>
+              {adminPages.map((p) => (
+                <Link
+                  key={p.href}
+                  href={p.href}
+                  className={`${styles.navLink} ${active(p.href) ? styles.active : ""}`}
+                  aria-current={active(p.href) ? "page" : undefined}
+                >
+                  <Icon name={p.icon} />
+                  {p.label}
+                </Link>
+              ))}
+            </nav>
+          </>
+        )}
+        <div className={styles.sidebarFooter}>
+          <span className={styles.access}>
+            {profile
+              ? isAdmin
+                ? "Administrator"
+                : "Read-only access"
+              : "Public workspace"}
+          </span>
+          <button
+            className={styles.accountButton}
+            onClick={() => account.current?.showModal()}
+          >
+            <span className={styles.avatar}>
+              {profile?.name.slice(0, 1).toUpperCase() || "Z"}
+            </span>
+            <span>
+              {profile?.name || "Guest"}
+              <small>
+                {profile ? "Account & access" : "Sign in for admin tools"}
+              </small>
+            </span>
+            <Icon name="account" />
+          </button>
         </div>
-      ) : (
-        <Link
-          href="/login"
-          className={styles.userButton}
-          style={{ textDecoration: "none", fontSize: 13 }}
-        >
-          Sign in
-        </Link>
-      )}
-      </div>
-
-      {hamburgerOpen && (
-        <nav id="mobile-navigation" className={styles.mobileMenu} aria-label="Mobile navigation">
-          <Link
-            href="/"
-            className={`${styles.mobileItem} ${pathname === "/" ? styles.mobileActive : ""}`}
-            onClick={() => setHamburgerOpen(false)}
-          >
-            Analytics
-          </Link>
-          <Link
-            href="/tenders"
-            className={`${styles.mobileItem} ${pathname.startsWith("/tenders") ? styles.mobileActive : ""}`}
-            onClick={() => setHamburgerOpen(false)}
-          >
-            Tenders
-          </Link>
-          <Link
-            href="/notifications"
-            className={`${styles.mobileItem} ${pathname === "/notifications" ? styles.mobileActive : ""}`}
-            onClick={() => setHamburgerOpen(false)}
-          >
-            Notifications
-            {notificationCount > 0 && <span className={styles.mobileBadge}>{notificationCount}</span>}
-          </Link>
-          {profile && isAdmin && (
-            <Suspense fallback={<Link href="/tenders/new" className={styles.mobileItem}>+ New Tender</Link>}>
-              <NewTenderLink mobile onNavigate={() => setHamburgerOpen(false)} />
+      </aside>
+      <div className={styles.workspace}>
+        <header className={styles.header}>
+          <div className={styles.breadcrumb}>
+            <span>Zekindo</span>
+            <span aria-hidden="true">/</span>
+            <strong>{current?.label || "Tender workspace"}</strong>
+          </div>
+          <form action="/tenders" className={styles.search} role="search">
+            <Icon name="search" />
+            <input type="hidden" name="track" value="all" />
+            <input
+              ref={search}
+              name="search"
+              aria-label="Search workspace"
+              placeholder="Search tenders, customers…"
+            />
+            <kbd>/</kbd>
+          </form>
+          {isAdmin ? (
+            <Suspense
+              fallback={
+                <Link className="button button-primary" href="/tenders/new">
+                  New tender
+                </Link>
+              }
+            >
+              <CreateLink />
             </Suspense>
-          )}
-          {profile && isAdmin && (
-            <Link
-              href="/tenders/archive"
-              className={styles.mobileItem}
-              onClick={() => setHamburgerOpen(false)}
-            >
-              Archived tenders
+          ) : (
+            <Link className="button button-secondary" href="/login">
+              Sign in
             </Link>
           )}
-          {profile && isAdmin && (
-            <Link
-              href="/admin/milestones"
-              className={styles.mobileItem}
-              onClick={() => setHamburgerOpen(false)}
-            >
-              Manage milestones
-            </Link>
+        </header>
+        <main id="main-content" className={styles.content} tabIndex={-1}>
+          {children}
+        </main>
+        <footer className={styles.footer}>
+          PT Zeus Kimiatama Indonesia<span>Tender Management</span>
+        </footer>
+      </div>
+      <nav className={styles.mobileNav} aria-label="Mobile navigation">
+        {pages.map((p) => (
+          <Link
+            key={p.href}
+            href={p.href}
+            className={active(p.href) ? styles.mobileActive : ""}
+            aria-current={active(p.href) ? "page" : undefined}
+          >
+            <Icon name={p.icon} />
+            <span>{p.label}</span>
+          </Link>
+        ))}
+        <button onClick={() => account.current?.showModal()}>
+          <Icon name="account" />
+          <span>Account</span>
+        </button>
+      </nav>
+      <dialog
+        ref={account}
+        className="dialog"
+        aria-labelledby="account-title"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) account.current?.close();
+        }}
+      >
+        <div className="dialog-heading">
+          <h2 id="account-title">{profile?.name || "Workspace access"}</h2>
+          <button
+            className="icon-button"
+            aria-label="Close account"
+            onClick={() => account.current?.close()}
+          >
+            <Icon name="close" />
+          </button>
+        </div>
+        <p className="muted">
+          {profile?.email ||
+            "Explore tender data and download Excel without signing in."}
+        </p>
+        <nav className={styles.navigation} aria-label="Account actions">
+          {isAdmin && (
+            <>
+              <Suspense>
+                <div onClick={() => account.current?.close()}>
+                  <CreateLink />
+                </div>
+              </Suspense>
+              {adminPages.map((p) => (
+                <Link
+                  key={p.href}
+                  className={styles.navLink}
+                  href={p.href}
+                  onClick={() => account.current?.close()}
+                >
+                  <Icon name={p.icon} />
+                  {p.label}
+                </Link>
+              ))}
+            </>
           )}
-          {profile && isAdmin && (
-            <Link href="/admin/users" className={styles.mobileItem} onClick={() => setHamburgerOpen(false)}>
-              Manage users
-            </Link>
-          )}
-          {profile && (
-            <form action={logout} onSubmit={() => setHamburgerOpen(false)}>
-              <button type="submit" className={styles.menuItemDanger}>Sign out</button>
+          {profile ? (
+            <form action={logout}>
+              <button className="button button-danger" type="submit">
+                Sign out
+              </button>
             </form>
-          )}
-          {!profile && (
+          ) : (
             <Link
+              className="button button-primary"
               href="/login"
-              className={`${styles.mobileItem} ${pathname === "/login" ? styles.mobileActive : ""}`}
-              onClick={() => setHamburgerOpen(false)}
+              onClick={() => account.current?.close()}
             >
               Sign in
             </Link>
           )}
         </nav>
-      )}
-    </header>
+      </dialog>
+    </div>
   );
 }

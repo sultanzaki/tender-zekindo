@@ -4,12 +4,12 @@
  * obvious to the eye and invisible in code. */
 
 .bar {
-  padding: 24px 32px 0;
+  padding: 0;
 }
 
 @media (max-width: 900px) {
   .bar {
-    padding: 16px 16px 0;
+    padding: 0;
   }
 }
 
@@ -18,7 +18,7 @@
   gap: 4px;
   padding: 3px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-full);
+  border-radius: 7px;
   background: var(--zk-gray-50);
   max-width: 100%;
 }
@@ -26,8 +26,8 @@
 .item,
 .active {
   padding: 6px 16px;
-  border-radius: var(--radius-full);
-  font-size: 12.5px;
+  border-radius: 7px;
+  font-size: 11px;
   font-weight: 500;
   text-decoration: none;
   white-space: nowrap;
@@ -58,7 +58,7 @@
 @media (max-width: 600px) {
   .item,
   .active {
-    padding: 8px 14px;
-    font-size: 13px;
+    padding: 8px 12px;
+    font-size: 11px;
   }
 }

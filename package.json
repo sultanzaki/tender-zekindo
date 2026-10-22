@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:ui": "node --test tests/ui/regressions.test.mjs"
+    "test:ui": "node --test tests/ui/regressions.test.mjs",
+    "test": "node --test tests/business.test.mjs tests/actions.test.mjs tests/read-model.test.mjs tests/export.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.4",

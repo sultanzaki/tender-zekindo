@@ -4,6 +4,7 @@ import { useState } from "react";
 
 function formatDigits(digits: string): string {
   if (!digits) return "";
+  if (!/^\d*(\.\d*)?$/.test(digits)) return digits;
   const [whole, fraction] = digits.split(".");
   const grouped = BigInt(whole || "0").toLocaleString("id-ID");
   return fraction === undefined ? grouped : `${grouped},${fraction}`;
@@ -33,9 +34,13 @@ export function NumberInput({
       inputMode="decimal"
       value={focused ? digits : formatDigits(digits)}
       onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
+      onBlur={() => {
+        setFocused(false);
+        if (value.endsWith(".")) onChange(value.slice(0, -1));
+      }}
       onChange={(e) => {
-        const next = e.target.value.replace(",", ".");
+        const raw = e.target.value.replace(",", ".");
+        const next = raw.startsWith(".") ? `0${raw}` : raw;
         if (/^\d*(\.\d*)?$/.test(next)) onChange(next);
       }}
     />

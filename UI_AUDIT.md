@@ -1,5 +1,7 @@
 # UI/UX audit
 
+Historical audit preceding the workspace redesign. See [REDESIGN_REPORT.md](REDESIGN_REPORT.md) for the current implementation and validation.
+
 Reviewed navigation, analytics, upstream/downstream tender tables, tender details,
 create/edit forms, notifications, user administration, milestone administration,
 and document controls. Existing visual styling and business terminology are retained.

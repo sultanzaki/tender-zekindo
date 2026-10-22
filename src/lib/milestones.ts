@@ -40,7 +40,10 @@ const getMilestoneTypesCached = unstable_cache(
       //
       // An empty-but-successful read still returns [] on purpose: that is an
       // admin who archived every milestone, which is a legitimate choice.
-      console.error(`Failed to load ${track} milestone types, falling back to the built-ins:`, error.message);
+      console.error(
+        `Failed to load ${track} milestone types, falling back to the built-ins:`,
+        error.message,
+      );
       return defaultMilestoneTypes(track);
     }
     return (data ?? []).map((r) => ({
@@ -56,7 +59,9 @@ const getMilestoneTypesCached = unstable_cache(
   { tags: [MILESTONE_TYPES_TAG], revalidate: 300 },
 );
 
-export async function getMilestoneTypes(track: Track): Promise<MilestoneType[]> {
+export async function getMilestoneTypes(
+  track: Track,
+): Promise<MilestoneType[]> {
   return getMilestoneTypesCached(track);
 }
 
@@ -80,7 +85,10 @@ export async function getMilestoneCatalog(): Promise<MilestoneCatalog> {
  * mistake only shows up as wrong data later.
  *
  * Must stay stable once written. */
-export function slugifyMilestoneKey(label: string, track: Track = "upstream"): string {
+export function slugifyMilestoneKey(
+  label: string,
+  track: Track = "upstream",
+): string {
   const words = label
     .trim()
     .replace(/[^a-zA-Z0-9 ]/g, " ")
@@ -89,24 +97,31 @@ export function slugifyMilestoneKey(label: string, track: Track = "upstream"): s
   if (!words.length) return "";
   const slug = words
     .map((w, i) =>
-      i === 0 ? w.toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(),
+      i === 0
+        ? w.toLowerCase()
+        : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(),
     )
     .join("");
-  return track === "downstream" ? `ds${slug.charAt(0).toUpperCase()}${slug.slice(1)}` : slug;
+  return track === "downstream"
+    ? `ds${slug.charAt(0).toUpperCase()}${slug.slice(1)}`
+    : slug;
 }
 
 /** Admin management view for one track: includes archived milestones, and
  * deliberately NOT cached — the point of this page is to show the effect of the
  * last change immediately. Throws on error so the admin sees the problem rather
  * than a half-empty list. */
-export async function getMilestoneTypesForAdmin(track: Track): Promise<MilestoneTypeAdmin[]> {
+export async function getMilestoneTypesForAdmin(
+  track: Track,
+): Promise<MilestoneTypeAdmin[]> {
   const { data, error } = await supabaseServer()
     .from("milestone_types")
     .select("*")
     .eq("track", track)
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true });
-  if (error) throw new Error(`Failed to load milestone types: ${error.message}`);
+  if (error)
+    throw new Error(`Failed to load milestone types: ${error.message}`);
   return (data ?? []).map((r) => ({
     id: r.id,
     key: r.key,
@@ -116,4 +131,16 @@ export async function getMilestoneTypesForAdmin(track: Track): Promise<Milestone
     showInTable: r.show_in_table,
     archivedAt: r.archived_at,
   }));
+}
+
+/** Labels for historical file sections without reactivating their milestones. */
+export async function getMilestoneLabels(
+  keys: string[],
+): Promise<Map<string, string>> {
+  if (!keys.length) return new Map();
+  const { data } = await supabaseServer()
+    .from("milestone_types")
+    .select("key,label")
+    .in("key", keys);
+  return new Map((data ?? []).map((row) => [row.key, row.label]));
 }

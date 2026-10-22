@@ -20,7 +20,8 @@ function DonutTooltip(props: TooltipContentProps) {
         boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
       }}
     >
-      <strong>{row.label}</strong>: {row.count} tender{(row.count ?? 0) !== 1 ? "s" : ""}
+      <strong>{row.label}</strong>: {row.count} tender
+      {(row.count ?? 0) !== 1 ? "s" : ""}
     </div>
   );
 }
@@ -30,7 +31,14 @@ export function TenderStatusDonut({ data }: { data: StatusBreakdown[] }) {
 
   if (!total) {
     return (
-      <div style={{ padding: "40px 20px", textAlign: "center", fontSize: 13, color: "#64748b" }}>
+      <div
+        style={{
+          padding: "40px 20px",
+          textAlign: "center",
+          fontSize: 13,
+          color: "#64748b",
+        }}
+      >
         No tenders match the current filters.
       </div>
     );
@@ -42,6 +50,7 @@ export function TenderStatusDonut({ data }: { data: StatusBreakdown[] }) {
         <ResponsiveContainer width="100%" height={200}>
           <PieChart>
             <Pie
+              isAnimationActive={false}
               data={data}
               dataKey="count"
               nameKey="label"
@@ -54,7 +63,10 @@ export function TenderStatusDonut({ data }: { data: StatusBreakdown[] }) {
               strokeWidth={2}
             >
               {data.map((entry) => (
-                <Cell key={entry.key} fill={STATUS_COLORS[entry.key] ?? "#94a3b8"} />
+                <Cell
+                  key={entry.key}
+                  fill={STATUS_COLORS[entry.key] ?? "#94a3b8"}
+                />
               ))}
             </Pie>
             <Tooltip content={DonutTooltip} />
@@ -62,9 +74,19 @@ export function TenderStatusDonut({ data }: { data: StatusBreakdown[] }) {
         </ResponsiveContainer>
       </div>
 
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+      <div
+        style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}
+      >
         {data.map((entry) => (
-          <div key={entry.key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+          <div
+            key={entry.key}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12,
+            }}
+          >
             <span
               style={{
                 width: 10,
@@ -74,11 +96,20 @@ export function TenderStatusDonut({ data }: { data: StatusBreakdown[] }) {
                 flexShrink: 0,
               }}
             />
-            <span style={{ color: "#475569", minWidth: 70 }}>{entry.label}</span>
-            <span style={{ fontWeight: 600, color: "#0f172a", minWidth: 30, textAlign: "right" }}>
+            <span style={{ color: "#475569", minWidth: 70 }}>
+              {entry.label}
+            </span>
+            <span
+              style={{
+                fontWeight: 600,
+                color: "#0f172a",
+                minWidth: 30,
+                textAlign: "right",
+              }}
+            >
               {entry.count}
             </span>
-            <span style={{ color: "#94a3b8", fontSize: 11 }}>
+            <span style={{ color: "#5b707c", fontSize: 11 }}>
               {Math.round((entry.count / total) * 100)}%
             </span>
           </div>

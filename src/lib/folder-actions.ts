@@ -1,5 +1,12 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
+import {
+  MAX_UPLOAD_BYTES,
+  MAX_UPLOAD_FILES,
+  validUploadPath,
+  validFileSection,
+} from "./upload-policy";
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "./auth/dal";
 import { supabaseServer } from "./supabase-server";
@@ -23,8 +30,13 @@ function safeFileName(name: string) {
 /** Object key for one file. The index keeps two files with the same name in one
  * batch from overwriting each other, and the timestamp keeps a re-upload of the
  * same name from colliding with the previous one. */
-function objectPath(tenderId: string, owner: string, index: number, fileName: string) {
-  return `${tenderId}/${owner}-${Date.now()}-${index}-${safeFileName(fileName)}`;
+function objectPath(
+  tenderId: string,
+  owner: string,
+  index: number,
+  fileName: string,
+) {
+  return `${tenderId}/${owner}-${randomUUID()}-${index}-${safeFileName(fileName)}`;
 }
 
 /** Reads the folder and confirms it belongs to this tender. Returns the owner
@@ -40,7 +52,10 @@ interface FolderLookup {
   error?: string;
 }
 
-async function resolveFolder(tenderId: string, folderId: string): Promise<FolderLookup> {
+async function resolveFolder(
+  tenderId: string,
+  folderId: string,
+): Promise<FolderLookup> {
   const { data, error } = await supabaseServer()
     .from("tender_folders")
     .select("id, tender_id, milestone_key, document_type_id")
@@ -48,14 +63,15 @@ async function resolveFolder(tenderId: string, folderId: string): Promise<Folder
     .maybeSingle();
   if (error) return { folder: null, error: error.message };
   if (!data) return { folder: null, error: "Folder tidak ditemukan." };
-  if (data.tender_id !== tenderId) return { folder: null, error: "Folder itu milik tender lain." };
+  if (data.tender_id !== tenderId)
+    return { folder: null, error: "Folder itu milik tender lain." };
   return { folder: data };
 }
 
 export async function createDocumentFolder(
   tenderId: string,
   name: string,
-  target: FileTarget
+  target: FileTarget,
 ): Promise<ActionError | { id: string }> {
   const ctx = await requireAdmin();
   const trimmed = name.trim();
@@ -63,7 +79,8 @@ export async function createDocumentFolder(
 
   if (target.folderId) {
     const resolved = await resolveFolder(tenderId, target.folderId);
-    if (resolved.error || !resolved.folder) return { error: resolved.error ?? "Folder tidak ditemukan." };
+    if (resolved.error || !resolved.folder)
+      return { error: resolved.error ?? "Folder tidak ditemukan." };
     const { error } = await supabaseServer().from("tender_folders").insert({
       tender_id: tenderId,
       name: trimmed,
@@ -74,17 +91,27 @@ export async function createDocumentFolder(
     });
     if (error) return { error: error.message };
   } else {
-    if (!target.milestoneKey && !target.documentTypeId) {
-      return { error: "Folder harus punya induk: sebuah milestone atau satu item checklist." };
+    if (
+      !validFileSection(
+        target.milestoneKey ?? null,
+        target.documentTypeId ?? null,
+      )
+    ) {
+      return {
+        error:
+          "Folder harus punya induk: sebuah milestone atau satu item checklist.",
+      };
     }
-    const { error } = await supabaseServer().from("tender_folders").insert({
-      tender_id: tenderId,
-      name: trimmed,
-      parent_id: null,
-      milestone_key: target.milestoneKey ?? null,
-      document_type_id: target.documentTypeId ?? null,
-      created_by: ctx.userId,
-    });
+    const { error } = await supabaseServer()
+      .from("tender_folders")
+      .insert({
+        tender_id: tenderId,
+        name: trimmed,
+        parent_id: null,
+        milestone_key: target.milestoneKey ?? null,
+        document_type_id: target.documentTypeId ?? null,
+        created_by: ctx.userId,
+      });
     if (error) return { error: error.message };
   }
 
@@ -92,7 +119,10 @@ export async function createDocumentFolder(
   return { id: "" };
 }
 
-export async function renameDocumentFolder(folderId: string, name: string): Promise<ActionError | undefined> {
+export async function renameDocumentFolder(
+  folderId: string,
+  name: string,
+): Promise<ActionError | undefined> {
   await requireAdmin();
   const trimmed = name.trim();
   if (!trimmed) return { error: "Nama folder tidak boleh kosong." };
@@ -112,7 +142,7 @@ export async function renameDocumentFolder(folderId: string, name: string): Prom
 export async function uploadTenderFiles(
   tenderId: string,
   target: FileTarget,
-  formData: FormData
+  formData: FormData,
 ): Promise<ActionError | undefined> {
   const ctx = await requireAdmin();
 
@@ -127,11 +157,15 @@ export async function uploadTenderFiles(
 
   if (folderId) {
     const resolved = await resolveFolder(tenderId, folderId);
-    if (resolved.error || !resolved.folder) return { error: resolved.error ?? "Folder tidak ditemukan." };
+    if (resolved.error || !resolved.folder)
+      return { error: resolved.error ?? "Folder tidak ditemukan." };
     milestoneKey = resolved.folder.milestone_key;
     documentTypeId = resolved.folder.document_type_id;
-  } else if (!milestoneKey && !documentTypeId) {
-    return { error: "File harus punya induk: sebuah milestone atau satu item checklist." };
+  } else if (!validFileSection(milestoneKey, documentTypeId)) {
+    return {
+      error:
+        "File harus punya induk: sebuah milestone atau satu item checklist.",
+    };
   }
 
   const owner = folderId ?? milestoneKey ?? documentTypeId ?? "root";
@@ -146,7 +180,9 @@ export async function uploadTenderFiles(
     const buffer = new Uint8Array(await files[i].arrayBuffer());
     const { error } = await supabaseServer()
       .storage.from(DOCUMENT_BUCKET)
-      .upload(path, buffer, { contentType: files[i].type || "application/octet-stream" });
+      .upload(path, buffer, {
+        contentType: files[i].type || "application/octet-stream",
+      });
     if (error) {
       // Batches that landed before this failure are removed again.
       const landed = paths.filter((_, j) => j < i);
@@ -169,7 +205,7 @@ export async function uploadTenderFiles(
         size_bytes: file.size,
         content_type: file.type || null,
         uploaded_by: ctx.userId,
-      }))
+      })),
     );
   if (error) {
     // Rows failed after the objects landed: take the objects back out so the
@@ -199,11 +235,18 @@ export interface UploadPrepItem {
 export async function prepareFileUpload(
   tenderId: string,
   target: FileTarget,
-  files: { name: string; size: number; type: string }[]
+  files: { name: string; size: number; type: string }[],
 ): Promise<{ uploads: UploadPrepItem[] } | ActionError> {
-  const ctx = await requireAdmin();
-
-  if (!files.length) return { error: "Pilih minimal satu file." };
+  await requireAdmin();
+  if (!files.length || files.length > MAX_UPLOAD_FILES)
+    return { error: "Choose between 1 and 50 files." };
+  if (
+    files.some(
+      (file) =>
+        file.size <= 0 || file.size > MAX_UPLOAD_BYTES || !file.name.trim(),
+    )
+  )
+    return { error: "Each file must be non-empty and no larger than 5 MB." };
 
   const folderId: string | null = target.folderId ?? null;
   let milestoneKey: string | null = target.milestoneKey ?? null;
@@ -211,11 +254,15 @@ export async function prepareFileUpload(
 
   if (folderId) {
     const resolved = await resolveFolder(tenderId, folderId);
-    if (resolved.error || !resolved.folder) return { error: resolved.error ?? "Folder tidak ditemukan." };
+    if (resolved.error || !resolved.folder)
+      return { error: resolved.error ?? "Folder tidak ditemukan." };
     milestoneKey = resolved.folder.milestone_key;
     documentTypeId = resolved.folder.document_type_id;
-  } else if (!milestoneKey && !documentTypeId) {
-    return { error: "File harus punya induk: sebuah milestone atau satu item checklist." };
+  } else if (!validFileSection(milestoneKey, documentTypeId)) {
+    return {
+      error:
+        "File harus punya induk: sebuah milestone atau satu item checklist.",
+    };
   }
 
   const owner = folderId ?? milestoneKey ?? documentTypeId ?? "root";
@@ -236,7 +283,7 @@ export async function prepareFileUpload(
         fileSize: file.size,
         contentType: file.type || "application/octet-stream",
       };
-    })
+    }),
   );
 
   return { uploads };
@@ -247,7 +294,12 @@ export async function prepareFileUpload(
 export async function completeFileUpload(
   tenderId: string,
   target: FileTarget,
-  uploaded: { path: string; fileName: string; size: number; contentType: string | null }[]
+  uploaded: {
+    path: string;
+    fileName: string;
+    size: number;
+    contentType: string | null;
+  }[],
 ): Promise<ActionError | undefined> {
   const ctx = await requireAdmin();
 
@@ -257,13 +309,28 @@ export async function completeFileUpload(
 
   if (folderId) {
     const resolved = await resolveFolder(tenderId, folderId);
-    if (resolved.error || !resolved.folder) return { error: resolved.error ?? "Folder tidak ditemukan." };
+    if (resolved.error || !resolved.folder)
+      return { error: resolved.error ?? "Folder tidak ditemukan." };
     milestoneKey = resolved.folder.milestone_key;
     documentTypeId = resolved.folder.document_type_id;
-  } else if (!milestoneKey && !documentTypeId) {
-    return { error: "File harus punya induk: sebuah milestone atau satu item checklist." };
+  } else if (!validFileSection(milestoneKey, documentTypeId)) {
+    return {
+      error:
+        "File harus punya induk: sebuah milestone atau satu item checklist.",
+    };
   }
 
+  if (
+    !uploaded.length ||
+    uploaded.length > MAX_UPLOAD_FILES ||
+    uploaded.some(
+      (file) =>
+        !validUploadPath(tenderId, file.path) ||
+        file.size <= 0 ||
+        file.size > MAX_UPLOAD_BYTES,
+    )
+  )
+    return { error: "Invalid upload batch." };
   const { error } = await supabaseServer()
     .from("tender_files")
     .insert(
@@ -277,14 +344,16 @@ export async function completeFileUpload(
         size_bytes: f.size,
         content_type: f.contentType || null,
         uploaded_by: ctx.userId,
-      }))
+      })),
     );
   if (error) return { error: error.message };
 
   revalidatePath(`/tenders/${tenderId}`);
 }
 
-export async function deleteTenderFile(fileId: string): Promise<ActionError | undefined> {
+export async function deleteTenderFile(
+  fileId: string,
+): Promise<ActionError | undefined> {
   await requireAdmin();
 
   const { data: row, error } = await supabaseServer()
@@ -295,7 +364,10 @@ export async function deleteTenderFile(fileId: string): Promise<ActionError | un
   if (error) return { error: error.message };
   if (!row) return { error: "File tidak ditemukan." };
 
-  const { error: deleteError } = await supabaseServer().from("tender_files").delete().eq("id", fileId);
+  const { error: deleteError } = await supabaseServer()
+    .from("tender_files")
+    .delete()
+    .eq("id", fileId);
   if (deleteError) return { error: deleteError.message };
 
   await supabaseServer().storage.from(DOCUMENT_BUCKET).remove([row.file_path]);
@@ -310,7 +382,9 @@ export async function deleteTenderFile(fileId: string): Promise<ActionError | un
  * costing money and never being reachable again. So the paths are collected
  * first, the objects removed, and only then the row.
  */
-export async function deleteDocumentFolder(folderId: string): Promise<ActionError | undefined> {
+export async function deleteDocumentFolder(
+  folderId: string,
+): Promise<ActionError | undefined> {
   await requireAdmin();
 
   const { data: folder, error } = await supabaseServer()
@@ -350,14 +424,51 @@ export async function deleteDocumentFolder(folderId: string): Promise<ActionErro
 
   const paths = (files ?? []).map((f) => f.file_path);
   if (paths.length) {
-    const { error: storageError } = await supabaseServer().storage.from(DOCUMENT_BUCKET).remove(paths);
+    const { error: storageError } = await supabaseServer()
+      .storage.from(DOCUMENT_BUCKET)
+      .remove(paths);
     // Deleting the rows anyway would leave the objects unreachable forever, so
     // stop and report instead.
-    if (storageError) return { error: `Gagal menghapus file di folder ini: ${storageError.message}` };
+    if (storageError)
+      return {
+        error: `Gagal menghapus file di folder ini: ${storageError.message}`,
+      };
   }
 
-  const { error: deleteError } = await supabaseServer().from("tender_folders").delete().eq("id", folderId);
+  const { error: deleteError } = await supabaseServer()
+    .from("tender_folders")
+    .delete()
+    .eq("id", folderId);
   if (deleteError) return { error: deleteError.message };
 
   revalidatePath(`/tenders/${folder.tender_id}`);
+}
+
+/** Failed batches only remove unregistered objects; a lost response after a
+ * successful registration must never delete a file already linked to a tender. */
+export async function cancelPreparedUploads(
+  tenderId: string,
+  paths: string[],
+): Promise<ActionError | undefined> {
+  await requireAdmin();
+  if (
+    paths.length > MAX_UPLOAD_FILES ||
+    paths.some((path) => !validUploadPath(tenderId, path))
+  )
+    return { error: "Invalid upload paths." };
+  if (!paths.length) return;
+  const { data, error } = await supabaseServer()
+    .from("tender_files")
+    .select("file_path")
+    .eq("tender_id", tenderId)
+    .in("file_path", paths);
+  if (error) return { error: "Could not verify upload cleanup." };
+  const registered = new Set((data ?? []).map((row) => row.file_path));
+  const orphaned = paths.filter((path) => !registered.has(path));
+  if (orphaned.length) {
+    const result = await supabaseServer()
+      .storage.from(DOCUMENT_BUCKET)
+      .remove(orphaned);
+    if (result.error) return { error: "Could not clean up failed uploads." };
+  }
 }

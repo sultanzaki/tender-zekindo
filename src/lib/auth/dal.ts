@@ -1,6 +1,8 @@
 import "server-only";
 import { cache } from "react";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
+import { safeNextPath } from "../validation";
 import { getSessionUserId } from "./session";
 import { supabaseServer } from "../supabase-server";
 import type { Profile } from "../types";
@@ -24,7 +26,7 @@ export const getAuthContext = cache(async (): Promise<AuthContext | null> => {
 
     const { data: profileRow, error } = await supabaseServer()
       .from("profiles")
-      .select("*")
+      .select("id, email, name, role, created_at")
       .eq("id", userId)
       .maybeSingle();
     if (error || !profileRow) return null;
@@ -47,7 +49,10 @@ export const getAuthContext = cache(async (): Promise<AuthContext | null> => {
 
 export async function requireUser(): Promise<AuthContext> {
   const ctx = await getAuthContext();
-  if (!ctx) redirect("/login");
+  if (!ctx) {
+    const path = safeNextPath((await headers()).get("x-workspace-path") || "/");
+    redirect(`/login?${new URLSearchParams({ next: path })}`);
+  }
   return ctx;
 }
 

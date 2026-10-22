@@ -7,6 +7,7 @@ import { requireAdmin } from "./auth/dal";
 import { getTenderById } from "./tenders";
 import { DOCUMENT_BUCKET } from "./documents";
 import { getMilestoneTypes } from "./milestones";
+import { parseNumericInput, validateTender, isISODate } from "./validation";
 import { TENDERS_TAG } from "./cache-tags";
 import { currentPeriod, periodsSorted } from "./tender-logic";
 import {
@@ -25,15 +26,10 @@ export interface ActionError {
   error: string;
 }
 
-function parseNumericInput(raw: string): number | null {
-  const digits = raw.replace(/[^0-9]/g, "");
-  return digits ? Number(digits) : null;
-}
-
 /** Milestone keys are admin-authored data now (they become jsonb keys in
  * `tenders.milestones` and entries in `milestone_types.key`), so they are
  * validated rather than trusted from the client. */
-const MILESTONE_KEY_PATTERN = /^[a-zA-Z][a-zA-Z0-9_]*$/;
+const MILESTONE_KEY_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_]*$/;
 
 /** Builds the milestone jsonb for a save.
  *
@@ -42,7 +38,10 @@ const MILESTONE_KEY_PATTERN = /^[a-zA-Z][a-zA-Z0-9_]*$/;
  * milestone list (see `tenders.milestone_order`), and the form does not submit
  * milestones the tender doesn't show. Replacing the whole object would silently
  * delete the dates of every hidden milestone. */
-function buildMilestones(input: Record<string, string>, base: Milestones = {}): Milestones {
+function buildMilestones(
+  input: Record<string, string>,
+  base: Milestones = {},
+): Milestones {
   const out: Milestones = { ...base };
   for (const [key, value] of Object.entries(input)) {
     if (!MILESTONE_KEY_PATTERN.test(key)) continue;
@@ -51,18 +50,14 @@ function buildMilestones(input: Record<string, string>, base: Milestones = {}): 
   return out;
 }
 
-function validate(values: TenderFormValues): string | null {
-  if (!values.area.trim()) return "Area is required.";
-  if (!values.customer.trim()) return "Customer is required.";
-  return null;
-}
-
 function labelFor(tender: Tender): string {
   return tender.tenderNo || tender.product || tender.id;
 }
 
 async function resolveCurrentPeriod(): Promise<string> {
-  const { data, error } = await supabaseServer().from("tenders").select("period");
+  const { data, error } = await supabaseServer()
+    .from("tenders")
+    .select("period");
   if (error) throw new Error(`Failed to determine period: ${error.message}`);
   const periods = periodsSorted((data ?? []).map((r) => r.period));
   return currentPeriod(periods) || new Date().getFullYear().toString();
@@ -70,7 +65,7 @@ async function resolveCurrentPeriod(): Promise<string> {
 
 function diffRecords(
   before: Record<string, unknown>,
-  patch: Record<string, unknown>
+  patch: Record<string, unknown>,
 ): Record<string, TenderEventChange> | null {
   const changes: Record<string, TenderEventChange> = {};
   for (const [key, newVal] of Object.entries(patch)) {
@@ -102,7 +97,10 @@ async function logTenderEvent(params: {
   if (error) console.error("Failed to write tender_events row:", error.message);
 }
 
-function toInsertPayload(values: TenderFormValues, milestoneBase: Milestones = {}) {
+function toInsertPayload(
+  values: TenderFormValues,
+  milestoneBase: Milestones = {},
+) {
   return {
     area: values.area,
     tender_no: values.tenderNo || null,
@@ -122,17 +120,21 @@ function sameOrder(a: string[], b: string[]) {
   return a.length === b.length && a.every((key, i) => key === b[i]);
 }
 
-export async function createTender(values: TenderFormValues): Promise<ActionError | undefined> {
+export async function createTender(
+  values: TenderFormValues,
+): Promise<ActionError | undefined> {
   const ctx = await requireAdmin();
 
-  const validationError = validate(values);
+  const validationError = validateTender(values);
   if (validationError) return { error: validationError };
 
   let period: string;
   try {
     period = await resolveCurrentPeriod();
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed to determine period." };
+    return {
+      error: e instanceof Error ? e.message : "Failed to determine period.",
+    };
   }
 
   // Milestone order chosen on the new-tender form. Stored as NULL when it still
@@ -140,9 +142,15 @@ export async function createTender(values: TenderFormValues): Promise<ActionErro
   // catalog when milestones are later added, renamed or reordered. Unknown keys
   // are dropped rather than written, so a tampered payload cannot put junk in
   // the column.
-  const catalogOrder = (await getMilestoneTypes(values.track)).map((m) => m.key);
-  const requestedOrder = (values.milestoneOrder ?? catalogOrder).filter((k) => catalogOrder.includes(k));
-  const milestoneOrder = sameOrder(requestedOrder, catalogOrder) ? null : requestedOrder;
+  const catalogOrder = (await getMilestoneTypes(values.track)).map(
+    (m) => m.key,
+  );
+  const requestedOrder = (values.milestoneOrder ?? catalogOrder).filter((k) =>
+    catalogOrder.includes(k),
+  );
+  const milestoneOrder = sameOrder(requestedOrder, catalogOrder)
+    ? null
+    : requestedOrder;
 
   // Only THIS track's milestones are stored. The new-tender form offers BOTH
   // catalogs so you can switch and compare before saving; without this filter,
@@ -151,7 +159,7 @@ export async function createTender(values: TenderFormValues): Promise<ActionErro
   // that looks saved but never appears anywhere.
   const catalogKeys = new Set(catalogOrder);
   const milestones = Object.fromEntries(
-    Object.entries(values.milestones).filter(([key]) => catalogKeys.has(key))
+    Object.entries(values.milestones).filter(([key]) => catalogKeys.has(key)),
   );
 
   const { data, error } = await supabaseServer()
@@ -188,12 +196,18 @@ export async function createTender(values: TenderFormValues): Promise<ActionErro
   redirect(`/tenders/${data.id}`);
 }
 
-export async function updateTender(id: string, values: TenderEditFormValues): Promise<ActionError | undefined> {
+export async function updateTender(
+  id: string,
+  values: TenderEditFormValues,
+): Promise<ActionError | undefined> {
   const ctx = await requireAdmin();
 
-  const validationError = validate(values);
+  const validationError = validateTender(values);
   if (validationError) return { error: validationError };
-  if (values.result && !(RESULT_ENUM as readonly string[]).includes(values.result)) {
+  if (
+    values.result &&
+    !(RESULT_ENUM as readonly string[]).includes(values.result)
+  ) {
     return { error: "Invalid result value." };
   }
 
@@ -203,9 +217,36 @@ export async function updateTender(id: string, values: TenderEditFormValues): Pr
     .eq("id", id)
     .maybeSingle();
   if (beforeError || !before) return { error: "Tender not found." };
+  if (
+    values.track !== (before.track === "downstream" ? "downstream" : "upstream")
+  )
+    return { error: "A tender's track cannot change after creation." };
 
+  const catalogOrder = (
+    await getMilestoneTypes(
+      before.track === "downstream" ? "downstream" : "upstream",
+    )
+  ).map((m) => m.key);
+  const allowedOrder = new Set([
+    ...catalogOrder,
+    ...(before.milestone_order ?? []),
+  ]);
+  if (values.milestoneOrder?.some((key) => !allowedOrder.has(key)))
+    return {
+      error:
+        "A selected milestone is no longer available. Refresh the page before saving.",
+    };
   const patch = {
     ...toInsertPayload(values, before.milestones),
+    ...(values.milestoneOrder !== undefined
+      ? {
+          milestone_order:
+            values.milestoneOrder.length > 0 &&
+            sameOrder(values.milestoneOrder, catalogOrder)
+              ? null
+              : values.milestoneOrder,
+        }
+      : {}),
     result: values.result || null,
     carry_over: values.carryOver || null,
     remarks: values.remarks || null,
@@ -215,7 +256,10 @@ export async function updateTender(id: string, values: TenderEditFormValues): Pr
     updated_by: ctx.userId,
   };
 
-  const { error } = await supabaseServer().from("tenders").update(patch).eq("id", id);
+  const { error } = await supabaseServer()
+    .from("tenders")
+    .update(patch)
+    .eq("id", id);
   if (error) return { error: `Failed to save changes: ${error.message}` };
 
   await logTenderEvent({
@@ -234,7 +278,9 @@ export async function updateTender(id: string, values: TenderEditFormValues): Pr
   redirect(`/tenders/${id}`);
 }
 
-export async function archiveTender(id: string): Promise<ActionError | undefined> {
+export async function archiveTender(
+  id: string,
+): Promise<ActionError | undefined> {
   const ctx = await requireAdmin();
   const tender = await getTenderById(id);
   if (!tender) return { error: "Tender not found." };
@@ -259,10 +305,14 @@ export async function archiveTender(id: string): Promise<ActionError | undefined
   updateTag(TENDERS_TAG);
   revalidatePath("/tenders/archive");
   revalidatePath(`/tenders/${id}`);
-  redirect("/tenders");
+  redirect(
+    tender.track === "downstream" ? "/tenders?track=downstream" : "/tenders",
+  );
 }
 
-export async function restoreTender(id: string): Promise<ActionError | undefined> {
+export async function restoreTender(
+  id: string,
+): Promise<ActionError | undefined> {
   const ctx = await requireAdmin();
   const tender = await getTenderById(id);
   if (!tender) return { error: "Tender not found." };
@@ -298,12 +348,19 @@ export async function restoreTender(id: string): Promise<ActionError | undefined
 async function deleteTenderStorageFiles(tenderId: string): Promise<void> {
   try {
     const client = supabaseServer();
-    const { data, error } = await client.storage.from(DOCUMENT_BUCKET).list(tenderId);
+    const { data, error } = await client.storage
+      .from(DOCUMENT_BUCKET)
+      .list(tenderId);
     if (error || !data?.length) return;
-    const paths = data.filter((entry) => entry.id).map((entry) => `${tenderId}/${entry.name}`);
+    const paths = data
+      .filter((entry) => entry.id)
+      .map((entry) => `${tenderId}/${entry.name}`);
     if (paths.length) await client.storage.from(DOCUMENT_BUCKET).remove(paths);
   } catch (e) {
-    console.error(`Failed to clean up Storage files for tender ${tenderId}:`, e);
+    console.error(
+      `Failed to clean up Storage files for tender ${tenderId}:`,
+      e,
+    );
   }
 }
 
@@ -318,7 +375,7 @@ async function logBulkEvents(
   targets: { id: string; tender_no: string | null; product: string | null }[],
   ctx: { userId: string; profile: { name: string } },
   action: TenderEventAction,
-  detachIds = false
+  detachIds = false,
 ): Promise<void> {
   if (!targets.length) return;
   const { error } = await supabaseServer()
@@ -331,27 +388,34 @@ async function logBulkEvents(
         actor_name: ctx.profile.name,
         action,
         changes: null,
-      }))
+      })),
     );
-  if (error) console.error("Failed to write bulk tender_events rows:", error.message);
+  if (error)
+    console.error("Failed to write bulk tender_events rows:", error.message);
 }
 
 async function loadBulkTargets(ids: string[]) {
   const { data, error } = await supabaseServer()
     .from("tenders")
-    .select("id, tender_no, product")
+    .select("id, tender_no, product, archived_at")
     .in("id", ids);
   if (error) throw new Error(`Failed to load tenders: ${error.message}`);
   return data ?? [];
 }
 
-export async function deleteTenderPermanently(id: string): Promise<ActionError | undefined> {
+export async function deleteTenderPermanently(
+  id: string,
+): Promise<ActionError | undefined> {
   const ctx = await requireAdmin();
   const tender = await getTenderById(id);
   if (!tender) return { error: "Tender not found." };
-  if (!tender.archivedAt) return { error: "Archive the tender before deleting it permanently." };
+  if (!tender.archivedAt)
+    return { error: "Archive the tender before deleting it permanently." };
 
-  const { error } = await supabaseServer().from("tenders").delete().eq("id", id);
+  const { error } = await supabaseServer()
+    .from("tenders")
+    .delete()
+    .eq("id", id);
   if (error) return { error: error.message };
 
   await deleteTenderStorageFiles(id);
@@ -376,26 +440,31 @@ export async function bulkArchiveTenders(ids: string[]): Promise<BulkResult> {
   const ctx = await requireAdmin();
   if (!ids.length) return { error: "No tenders selected." };
 
+  let targets;
+  try {
+    targets = (await loadBulkTargets(ids)).filter((t) => !t.archived_at);
+  } catch {
+    return { error: "Could not load the selected tenders. Please try again." };
+  }
+  if (!targets.length) return { count: 0 };
   const { error } = await supabaseServer()
     .from("tenders")
     .update({ archived_at: new Date().toISOString(), updated_by: ctx.userId })
-    .in("id", ids);
+    .in(
+      "id",
+      targets.map((t) => t.id),
+    );
   if (error) return { error: `Failed to archive: ${error.message}` };
-
-  await logBulkEvents(await loadBulkTargets(ids), ctx, "archive");
+  await logBulkEvents(targets, ctx, "archive");
 
   revalidatePath("/");
   revalidatePath("/tenders");
   updateTag(TENDERS_TAG);
   revalidatePath("/tenders/archive");
-  return { count: ids.length };
+  return { count: targets.length };
 }
 
-/** Bulk permanent delete from the tender table: row, Storage files, and an
- * audit event per tender. Deliberately does NOT require a prior archive — the
- * UI gates it behind a typed confirmation instead, since requiring two steps
- * for a batch the user explicitly selected defeats the point of bulk actions.
- * Use bulkArchiveTenders when the intent is reversible. */
+/** Permanent deletion is restricted to previously archived tenders. */
 export async function bulkDeleteTenders(ids: string[]): Promise<BulkResult> {
   const ctx = await requireAdmin();
   if (!ids.length) return { error: "No tenders selected." };
@@ -404,12 +473,21 @@ export async function bulkDeleteTenders(ids: string[]): Promise<BulkResult> {
   try {
     targets = await loadBulkTargets(ids);
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed to load tenders." };
+    return {
+      error: e instanceof Error ? e.message : "Failed to load tenders.",
+    };
   }
   if (!targets.length) return { error: "No matching tenders found." };
+  if (targets.some((t) => !t.archived_at))
+    return {
+      error: "Archive all selected tenders before deleting them permanently.",
+    };
 
   const targetIds = targets.map((t) => t.id);
-  const { error } = await supabaseServer().from("tenders").delete().in("id", targetIds);
+  const { error } = await supabaseServer()
+    .from("tenders")
+    .delete()
+    .in("id", targetIds);
   if (error) return { error: `Failed to delete: ${error.message}` };
 
   for (const targetId of targetIds) await deleteTenderStorageFiles(targetId);
@@ -436,9 +514,13 @@ export async function deleteTenderPermanentlyForm(id: string): Promise<void> {
 
 // Inline quick-edit from the tender table (Result badge / a milestone date
 // cell), scoped to admins. No redirect — the caller stays on the table.
-export async function quickUpdateResult(id: string, result: string): Promise<ActionError | undefined> {
+export async function quickUpdateResult(
+  id: string,
+  result: string,
+): Promise<ActionError | undefined> {
   const ctx = await requireAdmin();
-  if (result && !(RESULT_ENUM as readonly string[]).includes(result)) return { error: "Invalid result value." };
+  if (result && !(RESULT_ENUM as readonly string[]).includes(result))
+    return { error: "Invalid result value." };
 
   const { data: before, error: beforeError } = await supabaseServer()
     .from("tenders")
@@ -448,7 +530,10 @@ export async function quickUpdateResult(id: string, result: string): Promise<Act
   if (beforeError || !before) return { error: "Tender not found." };
 
   const patch = { result: result || null, updated_by: ctx.userId };
-  const { error } = await supabaseServer().from("tenders").update(patch).eq("id", id);
+  const { error } = await supabaseServer()
+    .from("tenders")
+    .update(patch)
+    .eq("id", id);
   if (error) return { error: error.message };
 
   await logTenderEvent({
@@ -469,10 +554,13 @@ export async function quickUpdateResult(id: string, result: string): Promise<Act
 export async function quickUpdateMilestone(
   id: string,
   key: string,
-  value: string
+  value: string,
 ): Promise<ActionError | undefined> {
   const ctx = await requireAdmin();
-  if (!MILESTONE_KEY_PATTERN.test(key)) return { error: "Invalid milestone key." };
+  if (!MILESTONE_KEY_PATTERN.test(key))
+    return { error: "Invalid milestone key." };
+  if (value && !isISODate(value))
+    return { error: "Enter a valid milestone date." };
 
   const { data: before, error: beforeError } = await supabaseServer()
     .from("tenders")
@@ -483,7 +571,10 @@ export async function quickUpdateMilestone(
 
   const milestones = { ...before.milestones, [key]: value || null };
   const patch = { milestones, updated_by: ctx.userId };
-  const { error } = await supabaseServer().from("tenders").update(patch).eq("id", id);
+  const { error } = await supabaseServer()
+    .from("tenders")
+    .update(patch)
+    .eq("id", id);
   if (error) return { error: error.message };
 
   await logTenderEvent({
@@ -501,7 +592,10 @@ export async function quickUpdateMilestone(
   revalidatePath(`/tenders/${id}`);
 }
 
-export async function addSelectOption(field: string, value: string): Promise<{ error?: string; value?: string }> {
+export async function addSelectOption(
+  field: string,
+  value: string,
+): Promise<{ error?: string; value?: string }> {
   const ctx = await requireAdmin();
   const trimmed = value.trim();
   if (!trimmed) return { error: "Value can't be empty." };
@@ -511,7 +605,11 @@ export async function addSelectOption(field: string, value: string): Promise<{ e
 
   const { error } = await supabaseServer()
     .from("select_options")
-    .insert({ field: field as ExtendableField, value: trimmed, created_by: ctx.userId });
+    .insert({
+      field: field as ExtendableField,
+      value: trimmed,
+      created_by: ctx.userId,
+    });
   if (error && error.code !== "23505") return { error: error.message };
 
   revalidatePath("/tenders/new");

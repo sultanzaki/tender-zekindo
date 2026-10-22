@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { getAuthContext } from "@/lib/auth/dal";
 import { getAllTenders } from "@/lib/tenders";
-import { getMilestoneTypes } from "@/lib/milestones";
+import { getMilestoneTypes, getMilestoneCatalog } from "@/lib/milestones";
 import { filterTenders } from "@/lib/tender-logic";
 import { trackFromParam, TRACK_LABELS } from "@/lib/types";
 
@@ -17,7 +17,10 @@ export async function GET(request: Request) {
   const isAdmin = ctx?.profile.role === "admin";
 
   const { searchParams } = new URL(request.url);
-  const track = trackFromParam(searchParams.get("track"));
+  const track =
+    searchParams.get("track") === "all"
+      ? "all"
+      : trackFromParam(searchParams.get("track"));
   const filters = {
     period: searchParams.get("period") ?? "all",
     area: searchParams.get("area") ?? "all",
@@ -28,7 +31,13 @@ export async function GET(request: Request) {
   };
 
   const tenders = await getAllTenders({ track });
-  const milestoneTypes = await getMilestoneTypes(track);
+  const milestoneTypes =
+    track === "all"
+      ? await getMilestoneCatalog().then((c) => [
+          ...(c.upstream ?? []),
+          ...(c.downstream ?? []),
+        ])
+      : await getMilestoneTypes(track);
   const rows = filterTenders(tenders, filters);
 
   const workbook = new ExcelJS.Workbook();
@@ -51,14 +60,34 @@ export async function GET(request: Request) {
     { header: "OE Note", key: "oeCatatan", width: 20 },
     { header: "Bid Value (Rp)", key: "nilaiPenawaran", width: 16 },
     { header: "P&L", key: "pnl", width: 8 },
-    ...milestoneTypes.map((m) => ({ header: m.label, key: msKey(m.key), width: 16 })),
+    ...milestoneTypes.map((m) => ({
+      header: m.label,
+      key: msKey(m.key),
+      width: 16,
+    })),
     { header: "Result", key: "result", width: 20 },
     { header: "Carry Over", key: "carryOver", width: 20 },
     { header: "Remarks", key: "remarks", width: 50 },
     { header: "Remark", key: "remark", width: 30 },
-    ...(isAdmin ? [{ header: "Internal Notes", key: "catatanInternal", width: 40 }] : []),
+    ...(isAdmin
+      ? [{ header: "Internal Notes", key: "catatanInternal", width: 40 }]
+      : []),
   ];
-  sheet.getRow(1).font = { bold: true };
+  sheet.views = [{ state: "frozen", ySplit: 1, xSplit: 4 }];
+  sheet.autoFilter = {
+    from: { row: 1, column: 1 },
+    to: { row: 1, column: sheet.columns.length },
+  };
+  sheet.getRow(1).height = 26;
+  sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+  sheet.getRow(1).fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FF1A5F7A" },
+  };
+  for (const key of ["oe", "nilaiPenawaran"])
+    sheet.getColumn(key).numFmt = "#,##0.00";
+  sheet.getColumn("qty").numFmt = "#,##0.########";
 
   rows.forEach((t) => {
     sheet.addRow({
@@ -75,7 +104,9 @@ export async function GET(request: Request) {
       oeCatatan: t.oeCatatan,
       nilaiPenawaran: t.nilaiPenawaran,
       pnl: t.pnl ? "Yes" : "",
-      ...Object.fromEntries(milestoneTypes.map((m) => [msKey(m.key), t.milestones[m.key]])),
+      ...Object.fromEntries(
+        milestoneTypes.map((m) => [msKey(m.key), t.milestones[m.key]]),
+      ),
       result: t.result,
       carryOver: t.carryOver,
       remarks: t.remarks,
@@ -89,7 +120,8 @@ export async function GET(request: Request) {
 
   return new Response(new Uint8Array(buffer), {
     headers: {
-      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Type":
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "Content-Disposition": `attachment; filename="${filename}"`,
       "Cache-Control": "private, no-store",
     },

@@ -4,10 +4,51 @@ Next.js (App Router) + Supabase implementation of the tender monitoring tool
 for PT Zeus Kimiatama Indonesia's internal tender team, built from the
 Claude Design handoff bundle described below (`project/`, `chats/`).
 
+## Workspace
+
+The application retains Zekindo's blue/white design and Poppins typography, with
+sidebar navigation on desktop and bottom navigation on phones.
+
+| Route               | Workflow                                                                   |
+| ------------------- | -------------------------------------------------------------------------- |
+| `/`                 | Operational overview, upcoming milestones, follow-up queue, recent tenders |
+| `/analytics`        | Filterable outcomes, known pipeline, customer/area/entity performance      |
+| `/tenders`          | Search, URL filters, saved browser views, columns, mobile cards            |
+| `/tenders/:id`      | Overview, documents, and administrator activity history                    |
+| `/notifications`    | Scoped deadline views, follow-up queue, calendar download                  |
+| `/tenders/export`   | Public Excel export matching track and filters                             |
+| `/admin/users`      | Account creation, role changes, password reset, removal                    |
+| `/admin/milestones` | Independent milestone catalogs by track                                    |
+| `/tenders/archive`  | Restore or confirm permanent deletion of archived tenders                  |
+
+Read access and Excel export are public. Mutations, archives, internal notes, and
+activity history require administrator access. The browser's saved views contain
+filter preferences only. All reported win rates use WIN / (WIN + LOSS); pipeline
+includes only known OE values on active tenders. Dates use Asia/Jakarta (WIB).
+
+For the redesign plan and verification evidence, see [REDESIGN_PLAN.md](REDESIGN_PLAN.md)
+and [REDESIGN_REPORT.md](REDESIGN_REPORT.md).
+
+### Checks
+
+```bash
+npm ci
+npm test
+npx playwright install chromium
+npm run test:ui
+npm run lint
+npm run build
+```
+
+A system Chromium can be selected with `CHROMIUM_PATH=/usr/bin/chromium`.
+When the cloud machine supplies an HTTPS proxy, use `NODE_USE_ENV_PROXY=1` for
+Node commands that need the hosted Supabase project. Tests use isolated fixtures;
+they do not alter the connected database or storage.
+
 ## Running the app
 
 ```bash
-npm install
+npm ci
 cp .env.example .env.local   # fill in every value — see below
 ```
 
@@ -113,11 +154,10 @@ is the authorization boundary, not Postgres RLS.
   sample size (`62% (n=13)`) so a thin bar never gets read as a strong
   signal.
 
-The layout is responsive (desktop, tablet, and mobile) — added after the
-original desktop-1440-only design; the dense tender table intentionally
-scrolls horizontally on narrow screens rather than becoming a card list, and
-the top nav's tab strip scrolls horizontally on the narrowest phones rather
-than wrapping/overlapping.
+The responsive workspace uses a desktop sidebar and mobile bottom navigation.
+Tender rows become readable cards on phones; the desktop table keeps its own
+horizontal scroll for milestone columns. Navigation, account tools and dialogs
+remain keyboard-accessible across desktop, tablet and mobile layouts.
 
 ---
 

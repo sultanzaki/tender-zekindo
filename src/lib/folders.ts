@@ -1,7 +1,12 @@
 import "server-only";
 import { supabaseServer } from "./supabase-server";
 import { DOCUMENT_BUCKET } from "./documents";
-import type { DocumentFile, DocumentFolder, DocumentSection, DocumentTreeNode } from "./types";
+import type {
+  DocumentFile,
+  DocumentFolder,
+  DocumentSection,
+  DocumentTreeNode,
+} from "./types";
 
 /** A file plus where it sits. `folderId` wins when set; otherwise the file is at
  * the root of the tree named by `milestoneKey` / `documentTypeId`. */
@@ -35,7 +40,9 @@ export interface SectionDescriptor {
  * that sequentially is what made the old detail page pay a round trip to
  * Singapore per attachment.
  */
-export async function getTenderFileTree(tenderId: string): Promise<TenderFileTree> {
+export async function getTenderFileTree(
+  tenderId: string,
+): Promise<TenderFileTree> {
   const [foldersRes, filesRes] = await Promise.all([
     supabaseServer()
       .from("tender_folders")
@@ -51,19 +58,27 @@ export async function getTenderFileTree(tenderId: string): Promise<TenderFileTre
 
   // Thrown, not swallowed: an empty document panel would look like the files
   // were deleted, which is far worse than an error page.
-  if (foldersRes.error) throw new Error(`Failed to load document folders: ${foldersRes.error.message}`);
-  if (filesRes.error) throw new Error(`Failed to load documents: ${filesRes.error.message}`);
+  if (foldersRes.error)
+    throw new Error(
+      `Failed to load document folders: ${foldersRes.error.message}`,
+    );
+  if (filesRes.error)
+    throw new Error(`Failed to load documents: ${filesRes.error.message}`);
 
   const folderRows = foldersRes.data ?? [];
   const fileRows = filesRes.data ?? [];
 
-  const urls = await Promise.all(
-    fileRows.map(async (row) => {
-      const { data } = await supabaseServer().storage.from(DOCUMENT_BUCKET).createSignedUrl(row.file_path, 300);
-      return [row.id, data?.signedUrl ?? null] as const;
-    })
+  const signed = fileRows.length
+    ? await supabaseServer()
+        .storage.from(DOCUMENT_BUCKET)
+        .createSignedUrls(
+          fileRows.map((row) => row.file_path),
+          300,
+        )
+    : { data: [] };
+  const urlByPath = new Map(
+    (signed.data ?? []).map((item) => [item.path, item.signedUrl]),
   );
-  const urlById = new Map(urls);
 
   return {
     folders: folderRows.map((r) => ({
@@ -79,7 +94,7 @@ export async function getTenderFileTree(tenderId: string): Promise<TenderFileTre
       milestoneKey: r.milestone_key,
       documentTypeId: r.document_type_id,
       fileName: r.file_name,
-      fileUrl: urlById.get(r.id) ?? null,
+      fileUrl: urlByPath.get(r.file_path) ?? null,
       sizeBytes: r.size_bytes,
       createdAt: r.created_at,
     })),
@@ -91,7 +106,10 @@ export async function getTenderFileTree(tenderId: string): Promise<TenderFileTre
 function byName<T extends { name?: string; fileName?: string }>(a: T, b: T) {
   const left = a.name ?? a.fileName ?? "";
   const right = b.name ?? b.fileName ?? "";
-  return left.localeCompare(right, undefined, { sensitivity: "base", numeric: true });
+  return left.localeCompare(right, undefined, {
+    sensitivity: "base",
+    numeric: true,
+  });
 }
 
 /**
@@ -103,7 +121,7 @@ function byName<T extends { name?: string; fileName?: string }>(a: T, b: T) {
  */
 export function buildDocumentSections(
   tree: TenderFileTree,
-  descriptors: SectionDescriptor[]
+  descriptors: SectionDescriptor[],
 ): DocumentSection[] {
   return descriptors.map((descriptor) => {
     const belongs = (folder: DocumentFolder) =>
@@ -116,7 +134,8 @@ export function buildDocumentSections(
 
     const childrenOf = new Map<string | null, DocumentFolder[]>();
     for (const folder of own) {
-      const parentKey = folder.parentId && ownIds.has(folder.parentId) ? folder.parentId : null;
+      const parentKey =
+        folder.parentId && ownIds.has(folder.parentId) ? folder.parentId : null;
       const bucket = childrenOf.get(parentKey) ?? [];
       bucket.push(folder);
       childrenOf.set(parentKey, bucket);

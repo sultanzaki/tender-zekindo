@@ -1,516 +1,289 @@
 "use client";
-
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { createTender } from "@/lib/actions";
-import { ensureMilestoneTypeByName } from "@/lib/milestone-actions";
-import { findDuplicateTenderNo, findOutOfOrderMilestones } from "@/lib/tender-logic";
-import {
-  TRACKS,
-  TRACK_LABELS,
-  type MilestoneType,
-  type SelectOptionsMap,
-  type TenderFormValues,
-  type Track,
+import { findDuplicateTenderNo, formatRupiah } from "@/lib/tender-logic";
+import { validateTender } from "@/lib/validation";
+import type {
+  MilestoneType,
+  SelectOptionsMap,
+  TenderFormValues,
+  Track,
 } from "@/lib/types";
-import { OptionSelect } from "./OptionSelect";
-import { NumberInput } from "./NumberInput";
-import shared from "./shared.module.css";
+import { PageHeading } from "./PageHeading";
+import { TenderFields } from "./TenderFields";
+import { MilestoneEditor } from "./MilestoneEditor";
+import { Modal } from "./Modal";
+import { useUnsavedChanges } from "./useUnsavedChanges";
 import styles from "./NewTenderForm.module.css";
-
-const EMPTY_FORM: TenderFormValues = {
-  // Replaced by initialTrack below. The form only ever CREATES a tender inside a
-  // track; once created, a tender's track can never change (its milestone dates
-  // live in a jsonb keyed by milestone key, and the two tracks use different keys).
-  track: "upstream",
-  area: "",
-  tenderNo: "",
-  customer: "",
-  product: "",
-  entitas: "",
-  qty: "",
-  oe: "",
-  oeCatatan: "",
-  nilaiPenawaran: "",
-  milestones: {},
-};
-
-const STEP_LABELS = ["Tender Details", "Value & Entity", "Milestone Dates"];
-
+const STEPS = [
+  "Tender details",
+  "Value & entity",
+  "Milestone schedule",
+  "Review & create",
+];
 export function NewTenderForm({
   initialTrack,
   selectOptions,
   catalogs,
   existingTenders,
 }: {
-  /** The track the form opens on, carried from the list page's URL. Changeable
-   * here, because creating is the only moment a track is picked. */
   initialTrack: Track;
   selectOptions: SelectOptionsMap;
-  /** BOTH catalogs, so switching the picker swaps the milestone list instantly.
-   * Milestone keys never overlap between tracks (`ds…` prefix), so dates already
-   * typed for one track survive a round trip to the other. */
   catalogs: Record<Track, MilestoneType[]>;
   existingTenders: { id: string; tenderNo: string | null }[];
 }) {
-  const [step, setStep] = useState(1);
-  const [formData, setFormData] = useState<TenderFormValues>({ ...EMPTY_FORM, track: initialTrack });
-  const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
-
-  // The chosen track lives in formData rather than in its own useState: one
-  // source of truth, and createTender receives exactly the same value the
-  // milestone list below is showing.
-  const track = formData.track;
-  const milestoneTypes = catalogs[track];
-
-  // Milestone order/subset for the tender being created. Starts as the catalog
-  // order; anything the user changes here is saved into tenders.milestone_order
-  // on submit, so the choice is made before the tender exists rather than only
-  // afterwards in the edit form.
-  //
-  // Kept PER TRACK: the two catalogs are independent, so reordering milestones
-  // while looking at downstream must not disturb the upstream list.
-  const [orders, setOrders] = useState<Record<Track, string[]>>(() => ({
+  const [values, setValues] = useState<TenderFormValues>({
+    track: initialTrack,
+    area: "",
+    tenderNo: "",
+    customer: "",
+    product: "",
+    entitas: "",
+    qty: "",
+    oe: "",
+    oeCatatan: "",
+    nilaiPenawaran: "",
+    milestones: {},
+  });
+  const [extra, setExtra] = useState<MilestoneType[]>([]);
+  const [orders, setOrders] = useState({
     upstream: catalogs.upstream.map((m) => m.key),
     downstream: catalogs.downstream.map((m) => m.key),
-  }));
-  const order = orders[track];
-  const setOrder = (update: (prev: string[]) => string[]) =>
-    setOrders((prev) => ({ ...prev, [track]: update(prev[track]) }));
-
-  const addSelectRef = useRef<HTMLSelectElement>(null);
-  const stepRef = useRef<HTMLDivElement>(null);
-
-  // Milestones created from this form, kept locally because the catalog prop was
-  // read on the server before they existed. Without this the new milestone would
-  // be in the order array but have no label to render. Per track as well: a
-  // milestone created for a downstream tender has no business appearing in the
-  // upstream list.
-  const [extraTypes, setExtraTypes] = useState<Record<Track, MilestoneType[]>>({
-    upstream: [],
-    downstream: [],
   });
-  const extra = extraTypes[track];
-  const [newMilestoneLabel, setNewMilestoneLabel] = useState("");
-  const [creating, setCreating] = useState(false);
-  const allTypes = useMemo(() => [...milestoneTypes, ...extra], [milestoneTypes, extra]);
-
-  const catalogByKey = useMemo(() => new Map(allTypes.map((m) => [m.key, m])), [allTypes]);
-  const orderedDefs = useMemo(
-    () => order.map((k) => catalogByKey.get(k)).filter((m): m is MilestoneType => !!m),
-    [order, catalogByKey]
+  const [step, setStep] = useState(0);
+  const [error, setError] = useState("");
+  const [pending, start] = useTransition();
+  const [discard, setDiscard] = useState(false);
+  const router = useRouter();
+  const form = useRef<HTMLFormElement>(null);
+  const dirty = Object.entries(values).some(
+    ([k, v]) =>
+      k !== "track" &&
+      (typeof v === "string" ? !!v : Object.keys(v).length > 0),
   );
-  const hiddenDefs = useMemo(
-    () => allTypes.filter((m) => !order.includes(m.key)),
-    [allTypes, order]
-  );
-
-  function chooseTrack(next: Track) {
-    if (next === track) return;
-    setFormData((f) => ({ ...f, track: next }));
-  }
-
-  /** Creates the milestone (or reuses it if the name exists) and puts it at the
-   * end of this tender's order. */
-  function createMilestone() {
-    const label = newMilestoneLabel.trim();
-    if (!label) return;
-    // Captured: if the track is switched while the request is in flight, the
-    // milestone still lands in the catalog it was created for.
-    const targetTrack = track;
-    setError(null);
-    setCreating(true);
-    startTransition(async () => {
-      const result = await ensureMilestoneTypeByName(label, targetTrack);
-      setCreating(false);
-      const key = result.key;
-      if (result.error || !key) {
-        setError(result.error ?? "Gagal membuat milestone.");
-        return;
-      }
-      setExtraTypes((prev) =>
-        prev[targetTrack].some((t) => t.key === key)
-          ? prev
-          : {
-              ...prev,
-              [targetTrack]: [
-                ...prev[targetTrack],
-                { id: key, key, track: targetTrack, label, sortOrder: 0, showInTable: false },
-              ],
-            }
-      );
-      setOrders((prev) =>
-        prev[targetTrack].includes(key) ? prev : { ...prev, [targetTrack]: [...prev[targetTrack], key] }
-      );
-      setNewMilestoneLabel("");
-    });
-  }
-
-  // ── Milestone order ─────────────────────────────────────────────────────
-  function moveInOrder(index: number, delta: -1 | 1) {
-    const target = index + delta;
-    if (target < 0 || target >= order.length) return;
-    setOrder((o) => {
-      const next = [...o];
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
-  }
-
-  function removeFromOrder(key: string) {
-    setOrder((o) => o.filter((k) => k !== key));
-  }
-
-  function addFromSelect() {
-    const key = addSelectRef.current?.value;
-    if (!key) return;
-    setOrder((o) => (o.includes(key) ? o : [...o, key]));
-    if (addSelectRef.current) addSelectRef.current.value = "";
-  }
-
-  function field<K extends keyof TenderFormValues>(key: K) {
-    return (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-      setFormData((f) => ({ ...f, [key]: e.target.value }));
-  }
-
-  function setMilestone(key: string, value: string) {
-    setFormData((f) => ({ ...f, milestones: { ...f.milestones, [key]: value } }));
-  }
-
-  const isDuplicateTenderNo = useMemo(
-    () => findDuplicateTenderNo(formData.tenderNo, existingTenders),
-    [formData.tenderNo, existingTenders]
-  );
-  const milestoneOrderIssues = useMemo(
-    () => findOutOfOrderMilestones(formData.milestones, orderedDefs),
-    [formData.milestones, orderedDefs]
-  );
-
-  function handleSubmit() {
-    setError(null);
-    if (!formData.area.trim() || !formData.customer.trim()) {
-      setStep(1);
-      setError("Select an area and customer before saving.");
+  const leave = useUnsavedChanges(dirty && !pending);
+  const back =
+    values.track === "downstream" ? "/tenders?track=downstream" : "/tenders";
+  function advance() {
+    setError("");
+    if (step === 0 && (!values.area.trim() || !values.customer.trim())) {
+      form.current?.reportValidity();
+      setError("Select an area and customer to continue.");
       return;
     }
-    startTransition(async () => {
-      const result = await createTender({ ...formData, milestoneOrder: order });
+    if (step === 1) {
+      const issue = validateTender(values);
+      if (issue) {
+        setError(issue);
+        return;
+      }
+    }
+    setStep(Math.min(3, step + 1));
+  }
+  function submit() {
+    const issue = validateTender(values);
+    if (issue) {
+      setError(issue);
+      return;
+    }
+    setError("");
+    start(async () => {
+      const result = await createTender({
+        ...values,
+        milestoneOrder: orders[values.track],
+      });
       if (result?.error) setError(result.error);
     });
   }
-
-  function nextStep() {
-    const invalid = stepRef.current?.querySelector<HTMLInputElement | HTMLSelectElement>(":invalid");
-    if (invalid) {
-      invalid.reportValidity();
-      invalid.focus();
-      return;
-    }
-    setError(null);
-    setStep((current) => Math.min(3, current + 1));
-  }
-
-  /** Upstream | Downstream. Shown on step 1 (where the tender's identity is
-   * decided) and again on step 3, because that is where its effect is visible:
-   * the milestone list and the date inputs below it come from this choice. */
-  const trackPicker = (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <span style={{ fontSize: 13, fontWeight: 500 }}>Track</span>
-      <div style={{ display: "flex", gap: 8 }}>
-        {TRACKS.map((t) => {
-          const active = t === track;
-          return (
-            <button
-              key={t}
-              type="button"
-              onClick={() => chooseTrack(t)}
-              disabled={isPending}
-              aria-pressed={active}
-              style={{
-                padding: "6px 14px",
-                fontSize: 13,
-                borderRadius: 6,
-                border: `1px solid ${active ? "var(--color-accent, #2563eb)" : "rgba(0,0,0,0.15)"}`,
-                background: active ? "var(--color-accent, #2563eb)" : "transparent",
-                color: active ? "#fff" : "inherit",
-                fontWeight: active ? 600 : 400,
-                cursor: "pointer",
-              }}
-            >
-              {TRACK_LABELS[t]}
-            </button>
-          );
-        })}
-      </div>
-      <span className={styles.hint}>
-        {milestoneTypes.length} milestones for this track. A tender&apos;s track cannot be changed after it is
-        created.
-      </span>
-    </div>
-  );
-
   return (
     <div className={styles.page}>
-      <div ref={stepRef} className={`${shared.card} ${styles.card}`}>
-        <div className={styles.steps} aria-label={`Step ${step} of 3: ${STEP_LABELS[step - 1]}`}>
-          {STEP_LABELS.map((label, i) => {
-            const num = i + 1;
-            const active = num <= step;
-            return (
-              <div key={label} className={styles.step} style={{ flex: num === 3 ? "0 0 auto" : "1" }}>
-                <div className={`${styles.stepCircle} ${active ? styles.stepCircleActive : ""}`}>{num}</div>
-                <div className={`${styles.stepLabel} ${active ? styles.stepLabelActive : ""}`}>{label}</div>
-                {num !== 3 && <div className={styles.stepLine} />}
-              </div>
-            );
-          })}
+      <PageHeading
+        eyebrow="CREATE OPPORTUNITY"
+        title="New tender"
+        description="Capture the essentials now. Refine the schedule as the opportunity progresses."
+        actions={
+          <button
+            className="button button-secondary"
+            onClick={() => (dirty ? setDiscard(true) : router.push(back))}
+          >
+            Cancel
+          </button>
+        }
+      />
+      <div
+        className={styles.steps}
+        aria-label={`Step ${step + 1} of 4: ${STEPS[step]}`}
+      >
+        {STEPS.map((label, i) => (
+          <button
+            key={label}
+            type="button"
+            className={`${styles.step} ${i === step ? styles.stepActive : ""}`}
+            disabled={pending || i > step}
+            onClick={() => setStep(i)}
+            aria-current={i === step ? "step" : undefined}
+          >
+            <span className={styles.stepNumber}>{i + 1}</span>
+            <span>{label}</span>
+          </button>
+        ))}
+      </div>
+      <form
+        ref={form}
+        className={styles.card}
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (step === 3) submit();
+          else advance();
+        }}
+      >
+        <div className={styles.sectionHeading}>
+          <h2>{STEPS[step]}</h2>
+          <span>Step {step + 1} of 4</span>
         </div>
-
-        {step === 1 && (
-          <div className={styles.fieldColumn}>
-            {trackPicker}
-            <label className={styles.label}>
-              Area <span className={styles.required}>*</span>
-              <OptionSelect
-                field="area"
-                label="Area"
-                className={styles.input}
-                value={formData.area}
-                options={selectOptions.area}
-                onChange={(v) => setFormData((f) => ({ ...f, area: v }))}
-                required
-              />
-            </label>
-            <label className={styles.label}>
-              Tender No.
-              <input
-                className={styles.input}
-                value={formData.tenderNo}
-                onChange={field("tenderNo")}
-                placeholder="Tender number"
-              />
-              {isDuplicateTenderNo && (
-                <span className={styles.fieldWarning}>Another tender already uses this number.</span>
+        <fieldset disabled={pending} className={styles.fieldset}>
+          {step === 0 && (
+            <TenderFields
+              section="details"
+              values={values}
+              onChange={(patch) => setValues((v) => ({ ...v, ...patch }))}
+              options={selectOptions}
+              allowTrack
+              duplicate={findDuplicateTenderNo(
+                values.tenderNo,
+                existingTenders,
               )}
-            </label>
-            <label className={styles.label}>
-              Customer <span className={styles.required}>*</span>
-              <OptionSelect
-                field="customer"
-                label="Customer"
-                className={styles.input}
-                value={formData.customer}
-                options={selectOptions.customer}
-                onChange={(v) => setFormData((f) => ({ ...f, customer: v }))}
-                required
-              />
-            </label>
-            <label className={styles.label}>
-              Package Title
-              <textarea
-                className={styles.textarea}
-                value={formData.product}
-                onChange={field("product")}
-                placeholder="Tender package title"
-                rows={3}
-              />
-            </label>
-          </div>
-        )}
-
-        {step === 2 && (
-          <div className={styles.fieldColumn}>
-            <label className={styles.label}>
-              Entity / Consortium
-              <OptionSelect
-                field="entitas"
-                label="Entity / Consortium"
-                className={styles.input}
-                value={formData.entitas}
-                options={selectOptions.entitas}
-                onChange={(v) => setFormData((f) => ({ ...f, entitas: v }))}
-              />
-            </label>
-            <div className={styles.fieldRow2}>
-              <label className={styles.label}>
-                Qty
-                <NumberInput
-                  className={styles.input}
-                  value={formData.qty}
-                  onChange={(v) => setFormData((f) => ({ ...f, qty: v }))}
-                  placeholder="e.g. 12,000"
-                />
-              </label>
-              <label className={styles.label}>
-                OE (Rp)
-                <NumberInput
-                  className={styles.input}
-                  value={formData.oe}
-                  onChange={(v) => setFormData((f) => ({ ...f, oe: v }))}
-                  placeholder="OE value"
-                />
-              </label>
-            </div>
-            <label className={styles.label}>
-              OE Note
-              <input
-                className={styles.input}
-                value={formData.oeCatatan}
-                onChange={field("oeCatatan")}
-                placeholder="e.g. Confidential, or a foreign-currency amount"
-              />
-            </label>
-            <label className={styles.label}>
-              Our Bid Value (Rp)
-              <NumberInput
-                className={styles.input}
-                value={formData.nilaiPenawaran}
-                onChange={(v) => setFormData((f) => ({ ...f, nilaiPenawaran: v }))}
-                placeholder="Bid value"
-              />
-            </label>
-          </div>
-        )}
-
-        {step === 3 && (
-          <div>
-            <div style={{ marginBottom: 14 }}>{trackPicker}</div>
-
-            {/* Milestone order & selection for the tender being created. Saved
-                into tenders.milestone_order when the tender is created; the date
-                inputs below follow the order. */}
-            <div className={styles.hint} style={{ marginBottom: 10 }}>
-              Milestones for this tender. Use ↑ ↓ to reorder, Remove to leave one out — you can add it back from the
-              dropdown. Removing only hides it for this tender; nothing is deleted from the catalog.
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
-              {orderedDefs.map((m, i) => (
-                <div key={m.key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ flex: 1, fontSize: 13 }}>
-                    {i + 1}. {m.label}
-                  </span>
-                  <button
-                    type="button"
-                    className={styles.backButton}
-                    onClick={() => moveInOrder(i, -1)}
-                    disabled={i === 0 || isPending}
-                    title="Move up"
-                  >
-                    ↑
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.backButton}
-                    onClick={() => moveInOrder(i, 1)}
-                    disabled={i === orderedDefs.length - 1 || isPending}
-                    title="Move down"
-                  >
-                    ↓
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.backButton}
-                    onClick={() => removeFromOrder(m.key)}
-                    disabled={isPending}
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-              {hiddenDefs.length > 0 && (
-                <select ref={addSelectRef} className={styles.input} defaultValue="">
-                  <option value="" disabled>
-                    Add a milestone…
-                  </option>
-                  {hiddenDefs.map((m) => (
-                    <option key={m.key} value={m.key}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
-              )}
-              {hiddenDefs.length > 0 && (
-                <button type="button" className={styles.backButton} onClick={addFromSelect} disabled={isPending}>
-                  Add
-                </button>
-              )}
-            </div>
-
-            {/* Milesone baru: namanya bebas, tidak terpatok daftar di atas. */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-              <input
-                className={styles.input}
-                value={newMilestoneLabel}
-                onChange={(e) => setNewMilestoneLabel(e.target.value)}
-                placeholder="Tulis nama milestone baru…"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    createMilestone();
-                  }
-                }}
-              />
-              <button
-                type="button"
-                className={styles.backButton}
-                onClick={createMilestone}
-                disabled={isPending || creating || !newMilestoneLabel.trim()}
-              >
-                {creating ? "Membuat…" : "Buat milestone"}
-              </button>
-            </div>
-
-            <div className={styles.hint}>Dates can be left blank if not yet known.</div>
-            {milestoneOrderIssues.length > 0 && (
-              <div className={styles.orderWarning}>
-                {milestoneOrderIssues.map((issue, i) => (
-                  <div key={i}>
-                    &ldquo;{issue.laterLabel}&rdquo; is dated before &ldquo;{issue.earlierLabel}&rdquo; — double-check these
-                    dates.
+            />
+          )}
+          {step === 1 && (
+            <TenderFields
+              section="value"
+              values={values}
+              onChange={(patch) => setValues((v) => ({ ...v, ...patch }))}
+              options={selectOptions}
+            />
+          )}
+          {step === 2 && (
+            <MilestoneEditor
+              key={values.track}
+              track={values.track}
+              catalog={[
+                ...catalogs[values.track],
+                ...extra.filter((m) => m.track === values.track),
+              ]}
+              onCreated={(created) => setExtra((prev) => [...prev, created])}
+              order={orders[values.track]}
+              dates={values.milestones}
+              onOrder={(order) =>
+                setOrders((o) => ({ ...o, [values.track]: order }))
+              }
+              onDates={(milestones) => setValues((v) => ({ ...v, milestones }))}
+            />
+          )}
+          {step === 3 && (
+            <div className={styles.review}>
+              <p className="muted">
+                Check these details before creating the tender. Unknown amounts
+                and milestone dates can stay blank.
+              </p>
+              <dl>
+                {[
+                  ["Track", values.track],
+                  ["Area", values.area],
+                  ["Customer", values.customer],
+                  ["Tender number", values.tenderNo || "—"],
+                  ["Package", values.product || "—"],
+                  ["Entity", values.entitas || "—"],
+                  ["Quantity", values.qty || "—"],
+                  ["OE", values.oe ? formatRupiah(values.oe) : "—"],
+                  [
+                    "Bid value",
+                    values.nilaiPenawaran
+                      ? formatRupiah(values.nilaiPenawaran)
+                      : "—",
+                  ],
+                  [
+                    "Milestones",
+                    `${orders[values.track].length} selected · ${orders[values.track].filter((k) => values.milestones[k]).length} dates set`,
+                  ],
+                ].map(([key, value]) => (
+                  <div key={key}>
+                    <dt>{key}</dt>
+                    <dd>{value}</dd>
                   </div>
                 ))}
-              </div>
-            )}
-            <div className={styles.milestoneGrid}>
-              {orderedDefs.map((m) => (
-                <label key={m.key} className={styles.label}>
-                  {m.label}
-                  <input
-                    type="date"
-                    className={styles.input}
-                    value={formData.milestones[m.key] || ""}
-                    onChange={(e) => setMilestone(m.key, e.target.value)}
-                  />
-                </label>
-              ))}
+              </dl>
             </div>
-          </div>
+          )}
+        </fieldset>
+        {error && (
+          <p role="alert" className="feedback feedback-error">
+            {error}
+          </p>
         )}
-
-        {error && <div role="alert" className={styles.errorBanner}>{error}</div>}
-
         <div className={styles.footer}>
           <button
-            className={`${styles.backButton} ${step === 1 ? styles.backButtonHidden : ""}`}
-            onClick={() => setStep((s) => Math.max(1, s - 1))}
-            disabled={isPending}
+            className="button button-secondary"
+            type="button"
+            disabled={step === 0 || pending}
+            onClick={() => {
+              setError("");
+              setStep(step - 1);
+            }}
           >
             Back
           </button>
-          {step === 3 ? (
-            <button className={styles.nextButton} onClick={handleSubmit} disabled={isPending}>
-              {isPending ? "Saving..." : "Save Tender"}
-            </button>
-          ) : (
-            <button className={styles.nextButton} onClick={nextStep} disabled={isPending}>
-              Next
-            </button>
-          )}
+          <button
+            type="submit"
+            className="button button-primary"
+            disabled={pending}
+          >
+            {pending ? "Creating…" : step === 3 ? "Create tender" : "Next"}
+          </button>
         </div>
-      </div>
+      </form>
+      <Modal
+        open={discard}
+        title="Discard this new tender?"
+        onClose={() => setDiscard(false)}
+      >
+        <p className="muted">Your unsaved entries will be lost.</p>
+        <div className="dialog-actions">
+          <button
+            className="button button-secondary"
+            onClick={() => setDiscard(false)}
+          >
+            Keep editing
+          </button>
+          <button
+            className="button button-danger"
+            onClick={() => {
+              setDiscard(false);
+              router.push(back);
+            }}
+          >
+            Discard changes
+          </button>
+        </div>
+      </Modal>
+      <Modal
+        open={leave.href !== null}
+        title="Leave without saving?"
+        onClose={leave.cancel}
+      >
+        <p className="muted">
+          Your changes have not been saved. Keep editing to avoid losing them.
+        </p>
+        <div className="dialog-actions">
+          <button className="button button-secondary" onClick={leave.cancel}>
+            Keep editing
+          </button>
+          <button className="button button-danger" onClick={leave.confirm}>
+            Discard and leave
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

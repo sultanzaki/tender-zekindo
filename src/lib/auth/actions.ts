@@ -4,8 +4,13 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
 import { supabaseServer } from "../supabase-server";
-import { createSession, destroyAllSessionsForUser, destroySession } from "./session";
+import {
+  createSession,
+  destroyAllSessionsForUser,
+  destroySession,
+} from "./session";
 import { requireAdmin } from "./dal";
+import { safeNextPath } from "../validation";
 import type { UserRole } from "../types";
 
 export interface FormState {
@@ -15,25 +20,36 @@ export interface FormState {
 const BCRYPT_ROUNDS = 10;
 const MIN_PASSWORD_LENGTH = 8;
 
-export async function login(_prevState: FormState | undefined, formData: FormData): Promise<FormState> {
-  const email = String(formData.get("email") || "").trim().toLowerCase();
+export async function login(
+  _prevState: FormState | undefined,
+  formData: FormData,
+): Promise<FormState> {
+  const email = String(formData.get("email") || "")
+    .trim()
+    .toLowerCase();
   const password = String(formData.get("password") || "");
   if (!email || !password) return { error: "Enter your email and password." };
 
-  const { data: profile, error } = await supabaseServer()
-    .from("profiles")
-    .select("id, password_hash")
-    .eq("email", email)
-    .maybeSingle();
-  if (error || !profile?.password_hash) return { error: "Incorrect email or password." };
-
-  const valid = await bcrypt.compare(password, profile.password_hash);
-  if (!valid) return { error: "Incorrect email or password." };
-
-  await createSession(profile.id);
+  try {
+    const { data: profile, error } = await supabaseServer()
+      .from("profiles")
+      .select("id, password_hash")
+      .eq("email", email)
+      .maybeSingle();
+    if (error)
+      return { error: "Sign-in is temporarily unavailable. Please try again." };
+    if (
+      !profile?.password_hash ||
+      !(await bcrypt.compare(password, profile.password_hash))
+    )
+      return { error: "Incorrect email or password." };
+    await createSession(profile.id);
+  } catch {
+    return { error: "Unable to sign in. Check your connection and try again." };
+  }
 
   const next = String(formData.get("next") || "/");
-  redirect(next.startsWith("/") ? next : "/");
+  redirect(safeNextPath(next));
 }
 
 export async function logout() {
@@ -51,14 +67,22 @@ export interface CreateUserInput {
 /** Admin creates an account and sets its initial password directly — no
  * invite email involved. The person just needs to be told the password
  * out of band (chat, in person, etc.). */
-export async function createUser(input: CreateUserInput): Promise<FormState | undefined> {
+export async function createUser(
+  input: CreateUserInput,
+): Promise<FormState | undefined> {
   await requireAdmin();
 
   const email = input.email.trim().toLowerCase();
   const name = input.name.trim();
   if (!email || !name) return { error: "Name and email are required." };
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    return { error: "Enter a valid email address." };
+  if (input.role !== "admin" && input.role !== "viewer")
+    return { error: "Choose a valid role." };
   if (input.password.length < MIN_PASSWORD_LENGTH) {
-    return { error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.` };
+    return {
+      error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`,
+    };
   }
 
   const password_hash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
@@ -66,7 +90,8 @@ export async function createUser(input: CreateUserInput): Promise<FormState | un
     .from("profiles")
     .insert({ email, name, role: input.role, password_hash });
   if (error) {
-    if (error.code === "23505") return { error: "A user with this email already exists." };
+    if (error.code === "23505")
+      return { error: "A user with this email already exists." };
     return { error: error.message };
   }
 
@@ -76,31 +101,55 @@ export async function createUser(input: CreateUserInput): Promise<FormState | un
 /** Admin sets a new password for an existing user (forgot-password flow) —
  * also revokes that user's existing sessions so a stolen/old login can't
  * outlive the reset. */
-export async function resetUserPassword(userId: string, newPassword: string): Promise<FormState | undefined> {
+export async function resetUserPassword(
+  userId: string,
+  newPassword: string,
+): Promise<FormState | undefined> {
   await requireAdmin();
   if (newPassword.length < MIN_PASSWORD_LENGTH) {
-    return { error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.` };
+    return {
+      error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`,
+    };
   }
 
   const password_hash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
-  const { error } = await supabaseServer().from("profiles").update({ password_hash }).eq("id", userId);
+  const { error } = await supabaseServer()
+    .from("profiles")
+    .update({ password_hash })
+    .eq("id", userId);
   if (error) return { error: error.message };
 
   await destroyAllSessionsForUser(userId);
   revalidatePath("/admin/users");
 }
 
-export async function updateUserRole(userId: string, role: UserRole): Promise<FormState | undefined> {
-  await requireAdmin();
-  const { error } = await supabaseServer().from("profiles").update({ role }).eq("id", userId);
+export async function updateUserRole(
+  userId: string,
+  role: UserRole,
+): Promise<FormState | undefined> {
+  const ctx = await requireAdmin();
+  if (userId === ctx.userId)
+    return { error: "You cannot change your own role." };
+  if (role !== "admin" && role !== "viewer")
+    return { error: "Choose a valid role." };
+  const { error } = await supabaseServer()
+    .from("profiles")
+    .update({ role })
+    .eq("id", userId);
   if (error) return { error: error.message };
   revalidatePath("/admin/users");
 }
 
-export async function removeUser(userId: string): Promise<FormState | undefined> {
+export async function removeUser(
+  userId: string,
+): Promise<FormState | undefined> {
   const ctx = await requireAdmin();
-  if (userId === ctx.userId) return { error: "You can't remove your own account." };
-  const { error } = await supabaseServer().from("profiles").delete().eq("id", userId);
+  if (userId === ctx.userId)
+    return { error: "You can't remove your own account." };
+  const { error } = await supabaseServer()
+    .from("profiles")
+    .delete()
+    .eq("id", userId);
   if (error) return { error: error.message };
   revalidatePath("/admin/users");
 }

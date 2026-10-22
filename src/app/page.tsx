@@ -1,191 +1,260 @@
-import { getAllTenders, getFilterOptions } from "@/lib/tenders";
+import Link from "next/link";
+import { getAllTenders } from "@/lib/tenders";
+import { getMilestoneCatalog } from "@/lib/milestones";
 import {
-  ascendingPeriods,
-  outcomesByPeriod,
-  lossReasonByPeriod,
-  winRateByGroup,
-  pipelineValueByGroup,
-  overallWinRate,
-  totalPipelineValue,
-  totalWinValue,
-  runningCount,
-  statusBreakdown,
-  trackComparison,
-} from "@/lib/analytics";
-import { KpiCards } from "@/components/charts/KpiCards";
-import { WinRateTrendChart } from "@/components/charts/WinRateTrendChart";
-import { OutcomeVolumeChart } from "@/components/charts/OutcomeVolumeChart";
-import { LossReasonTrendChart } from "@/components/charts/LossReasonTrendChart";
-import { GroupWinRateChart } from "@/components/charts/GroupWinRateChart";
-import { PipelineValueChart } from "@/components/charts/PipelineValueChart";
-import { TenderStatusDonut } from "@/components/charts/TenderStatusDonut";
-import { TrackComparisonChart } from "@/components/charts/TrackComparisonChart";
-import { AnalyticsFilters } from "@/components/AnalyticsFilters";
-import { TRACK_LABELS, type Track } from "@/lib/types";
-import shared from "@/components/shared.module.css";
-import chartStyles from "@/components/charts/charts.module.css";
-
+  computeDeadlines,
+  computeStalled,
+  todayISO,
+  formatDateID,
+  formatRupiah,
+} from "@/lib/tender-logic";
+import { overallWinRate, totalPipelineValue } from "@/lib/analytics";
+import { PageHeading } from "@/components/PageHeading";
+import { TrackBadge } from "@/components/TrackBadge";
+import { Icon } from "@/components/Icon";
+import type { Track } from "@/lib/types";
+import styles from "@/components/Workspace.module.css";
 export const dynamic = "force-dynamic";
-
-/** The landing page IS the analytics dashboard. The old Deadlines / Stats / Loss
- * Breakdown widgets were dropped in favour of this (the "due soon" list still
- * lives on /notifications and in the nav bell). Everything here answers to the
- * area, period and track filters, which live in the URL so a filtered view can
- * be bookmarked and reached with the Back button. */
-export default async function AnalyticsDashboardPage({
+export default async function Overview({
   searchParams,
 }: {
-  searchParams: Promise<{ area?: string; period?: string; track?: string }>;
+  searchParams: Promise<{ track?: string }>;
 }) {
   const params = await searchParams;
-  // The default here differs from the tender list on purpose: this is an
-  // overview, so it starts on BOTH tracks and you narrow it yourself. A stale
-  // bookmark naming a track we do not recognise falls back to both rather than
-  // to an empty dashboard.
   const track: Track | "all" =
-    params.track === "upstream" || params.track === "downstream" ? params.track : "all";
-
-  // Scoped to the chosen track first: the area/period options offered, and the
-  // "X of Y" denominator, must describe the track you are actually looking at.
-  const allTenders = await getAllTenders({ track });
-  const options = getFilterOptions(allTenders);
-
-  // A value that no longer exists is treated as "no filter" rather than as an
-  // empty result: a stale bookmark for a renamed area should show the data, not
-  // look like an empty database.
-  const area = params.area && options.areas.includes(params.area) ? params.area : "all";
-  const period = params.period && options.periods.includes(params.period) ? params.period : "all";
-
-  const tenders = allTenders.filter(
-    (t) => (area === "all" || t.area === area) && (period === "all" || t.period === period)
-  );
-
-  // Every figure below — KPI cards and charts alike — comes from the filtered
-  // set. That includes the trend charts: with one period selected a "trend" is a
-  // single bar, which is the honest answer to "show me only this one".
-  const periods = ascendingPeriods(tenders.map((t) => t.period));
-  const outcomeRows = outcomesByPeriod(tenders, periods);
-  const lossRows = lossReasonByPeriod(tenders, periods);
-  const winRateByArea = winRateByGroup(tenders, (t) => t.area);
-  const winRateByEntitas = winRateByGroup(tenders, (t) => t.entitas);
-  const pipelineByArea = pipelineValueByGroup(tenders, (t) => t.area);
-  const statusData = statusBreakdown(tenders);
-  const trackData = trackComparison(tenders);
-
-  const overall = overallWinRate(tenders);
-  const kpiData = {
-    pipelineValue: totalPipelineValue(tenders),
-    hidePipeline: track === "downstream",
-    winValue: totalWinValue(tenders),
-    runningCount: runningCount(tenders),
-    winRatePct: overall.pct,
-    winCount: overall.win,
-    lossCount: overall.loss,
-    decidedCount: overall.decided,
+    params.track === "upstream" || params.track === "downstream"
+      ? params.track
+      : "all";
+  const [tenders, catalog] = await Promise.all([
+    getAllTenders({ track }),
+    getMilestoneCatalog(),
+  ]);
+  const today = todayISO();
+  const deadlines = computeDeadlines(tenders, today, catalog);
+  const followups = computeStalled(tenders, today, catalog);
+  const running = tenders.filter((t) => !t.result);
+  const winRate = overallWinRate(tenders);
+  const updated = [...tenders]
+    .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))
+    .slice(0, 5);
+  const known = running.filter((t) => t.oe !== null).length;
+  const list = (extra: Record<string, string> = {}) => {
+    const query = new URLSearchParams({
+      ...(track !== "upstream" ? { track } : {}),
+      ...extra,
+    });
+    return `/tenders${query.size ? `?${query}` : ""}`;
   };
-
-  const activeFilters = [
-    track === "all" ? null : `Track: ${TRACK_LABELS[track]}`,
-    area === "all" ? null : `Area: ${area}`,
-    period === "all" ? null : `Period: ${period}`,
-  ].filter((v): v is string => !!v);
-
+  const analyticsHref =
+    track === "all" ? "/analytics" : `/analytics?track=${track}`;
+  const deadlineHref = (view = "all") =>
+    `/notifications?${new URLSearchParams({ view, ...(track !== "all" ? { track } : {}) })}`;
   return (
-    <div className={shared.pagePad} style={{ maxWidth: 1376, margin: "0 auto" }}>
-      <h1 style={{ margin: "0 0 4px", fontSize: 22, fontWeight: 600, color: "var(--color-fg1)" }}>Analytics</h1>
-      <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--color-fg3)" }}>
-        Win rate, loss reasons, and pipeline value.
-        {activeFilters.length > 0 && (
+    <div className={styles.page}>
+      <PageHeading
+        eyebrow="WORKSPACE OVERVIEW"
+        title="Your tender workday, at a glance."
+        description={
           <>
-            {" "}
-            <strong>{activeFilters.join(" · ")}</strong> — {tenders.length} of {allTenders.length} tenders.
+            Priorities, upcoming milestones, and the latest tender updates.{" "}
+            <span>{formatDateID(today)} · WIB</span>
           </>
-        )}
-      </p>
-
-      <AnalyticsFilters
-        areas={options.areas}
-        periods={options.periods}
-        area={area}
-        period={period}
-        track={track}
+        }
+        actions={
+          <Link href={analyticsHref} className="button button-secondary">
+            <Icon name="analytics" />
+            Explore analytics
+          </Link>
+        }
       />
-
-      <KpiCards data={kpiData} />
-
-      {track !== "downstream" && (
-        <div className={chartStyles.grid2} style={{ marginBottom: 20 }}>
-          <div className={shared.card} style={{ overflow: "hidden" }}>
-            <div className={shared.cardHeader}>
-              <h2 className={shared.cardTitle}>Win Rate Trend</h2>
-              <span className={shared.cardMeta}>By period, decided tenders only</span>
+      <nav className={styles.pills} aria-label="Overview track">
+        {[
+          ["all", "All tenders"],
+          ["upstream", "Upstream"],
+          ["downstream", "Downstream"],
+        ].map(([value, label]) => (
+          <Link
+            key={value}
+            href={value === "all" ? "/" : `/?track=${value}`}
+            aria-current={track === value ? "page" : undefined}
+          >
+            {label}
+          </Link>
+        ))}
+      </nav>
+      <div className={styles.metrics}>
+        {[
+          {
+            label: "Active tenders",
+            value: running.length,
+            foot: `${tenders.length} tenders in this scope`,
+            href: list({ result: "__EMPTY__" }),
+          },
+          {
+            label: "Due in 7 days",
+            value: deadlines.filter((d) => d.days <= 7).length,
+            foot: "Next milestone per active tender",
+            href: deadlineHref("week"),
+          },
+          {
+            label: "Needs follow-up",
+            value: followups.length,
+            foot: "Active, no upcoming milestone",
+            href: deadlineHref("followup"),
+          },
+          {
+            label: "Win rate",
+            value: winRate.pct === null ? "—" : `${winRate.pct}%`,
+            foot: `${winRate.win} wins / ${winRate.decided} decided tenders`,
+            href: analyticsHref,
+          },
+        ].map((metric) => (
+          <Link className={styles.metric} key={metric.label} href={metric.href}>
+            <span className={styles.metricLabel}>
+              {metric.label}
+              <Icon name="arrow" width={13} height={13} />
+            </span>
+            <strong className={styles.metricValue}>{metric.value}</strong>
+            <span className={styles.metricFoot}>{metric.foot}</span>
+          </Link>
+        ))}
+      </div>
+      <div className={styles.grid}>
+        <div className={styles.stack}>
+          <section className={styles.panel}>
+            <div className={styles.panelHead}>
+              <div>
+                <h2>Upcoming milestones</h2>
+                <p>Nearest deadline per tender · next 14 days</p>
+              </div>
+              <Link href={deadlineHref()}>View all →</Link>
             </div>
-            <WinRateTrendChart data={outcomeRows} />
-          </div>
-
-          <div className={shared.card} style={{ overflow: "hidden" }}>
-            <div className={shared.cardHeader}>
-              <h2 className={shared.cardTitle}>Outcome Volume</h2>
-              <span className={shared.cardMeta}>Tender count by outcome, per period</span>
+            {deadlines.length ? (
+              deadlines.slice(0, 6).map((d) => (
+                <Link
+                  className={styles.row}
+                  href={`/tenders/${d.tenderId}`}
+                  key={d.tenderId}
+                >
+                  <span
+                    className={`${styles.day} ${d.urgent ? styles.urgent : ""}`}
+                  >
+                    {d.days === 0 ? "0" : d.days}
+                    <small>{d.days === 0 ? "TODAY" : "DAYS"}</small>
+                  </span>
+                  <span className={styles.rowMain}>
+                    <span className={styles.rowTitle}>{d.customer}</span>
+                    <span className={styles.rowSub}>{d.product}</span>
+                  </span>
+                  <span className={styles.rowMeta}>
+                    {d.milestoneLabel}
+                    <br />
+                    {d.dateFormatted}
+                  </span>
+                </Link>
+              ))
+            ) : (
+              <div className={styles.empty}>
+                No deadlines in the next 14 days. Review active tenders to keep
+                their schedules up to date.
+              </div>
+            )}
+          </section>
+          <section className={styles.panel}>
+            <div className={styles.panelHead}>
+              <div>
+                <h2>Recently updated tenders</h2>
+                <p>Latest saved changes across this workspace</p>
+              </div>
+              <Link href={list()}>Open tenders →</Link>
             </div>
-            <OutcomeVolumeChart data={outcomeRows} />
-          </div>
+            {updated.map((t) => (
+              <Link href={`/tenders/${t.id}`} key={t.id} className={styles.row}>
+                <span className={styles.rowMain}>
+                  <span className={styles.rowTitle}>
+                    {t.tenderNo || t.customer} <TrackBadge track={t.track} />
+                  </span>
+                  <span className={styles.rowSub}>
+                    {t.product || t.customer}
+                  </span>
+                </span>
+                <span className={styles.rowMeta}>
+                  {t.updatedAt ? formatDateID(t.updatedAt.slice(0, 10)) : "—"}
+                </span>
+              </Link>
+            ))}
+            {!updated.length && (
+              <div className={styles.empty}>No tenders yet.</div>
+            )}
+          </section>
         </div>
-      )}
-
-      <div className={shared.card} style={{ marginBottom: 20, overflow: "hidden" }}>
-        <div className={shared.cardHeader}>
-          <h2 className={shared.cardTitle}>Loss Reason Mix</h2>
-          <span className={shared.cardMeta}>Share of losses by reason, per period</span>
+        <div className={styles.stack}>
+          <section className={styles.panel}>
+            <div className={styles.panelHead}>
+              <div>
+                <h2>Pipeline snapshot</h2>
+                <p>Active opportunities in the selected scope</p>
+              </div>
+            </div>
+            <div className={styles.insight}>
+              <div>
+                <p>Known pipeline value · OE</p>
+                <strong>{formatRupiah(totalPipelineValue(tenders))}</strong>
+                <p>
+                  {known} of {running.length} active tenders have an OE value.
+                </p>
+              </div>
+            </div>
+            <div className={styles.insight}>
+              <div>
+                <strong>{followups.length}</strong>
+                <p>
+                  tenders have no scheduled next step. They may be awaiting a
+                  result or need updated dates.
+                </p>
+              </div>
+              <Link href={deadlineHref("followup")}>Review →</Link>
+            </div>
+            <div className={styles.insight}>
+              <div>
+                <strong>{deadlines.filter((d) => d.days <= 3).length}</strong>
+                <p>milestones are due within 3 days.</p>
+              </div>
+              <Link href={deadlineHref("urgent")}>Open →</Link>
+            </div>
+          </section>
+          <section className={styles.panel}>
+            <div className={styles.panelHead}>
+              <div>
+                <h2>Follow-up queue</h2>
+                <p>Most recently active tenders without a next date</p>
+              </div>
+            </div>
+            {followups.slice(0, 5).map((t) => (
+              <Link
+                href={`/tenders/${t.tenderId}`}
+                key={t.tenderId}
+                className={styles.row}
+              >
+                <span className={styles.rowMain}>
+                  <span className={styles.rowTitle}>{t.customer}</span>
+                  <span className={styles.rowSub}>{t.product}</span>
+                </span>
+                <span className={styles.rowMeta}>
+                  {t.lastMilestoneLabel || "No dates set"}
+                  <br />
+                  {t.lastMilestoneDateFormatted}
+                </span>
+              </Link>
+            ))}
+            {!followups.length && (
+              <div className={styles.empty}>
+                Every active tender has an upcoming milestone.
+              </div>
+            )}
+          </section>
         </div>
-        <LossReasonTrendChart data={lossRows} />
       </div>
-
-      <div className={chartStyles.grid2} style={{ marginBottom: 20 }}>
-        <div className={shared.card} style={{ overflow: "hidden" }}>
-          <div className={shared.cardHeader}>
-            <h2 className={shared.cardTitle}>Tender Status</h2>
-            <span className={shared.cardMeta}>Breakdown of all tenders by outcome</span>
-          </div>
-          <TenderStatusDonut data={statusData} />
-        </div>
-
-        <div className={shared.card} style={{ overflow: "hidden" }}>
-          <div className={shared.cardHeader}>
-            <h2 className={shared.cardTitle}>Track Comparison</h2>
-            <span className={shared.cardMeta}>Upstream vs downstream</span>
-          </div>
-          <TrackComparisonChart data={trackData} />
-        </div>
-      </div>
-
-      <div className={chartStyles.grid2} style={{ marginBottom: 20 }}>
-        <div className={shared.card} style={{ overflow: "hidden" }}>
-          <div className={shared.cardHeader}>
-            <h2 className={shared.cardTitle}>Win Rate by Area</h2>
-            <span className={shared.cardMeta}>Areas with at least 3 decided tenders</span>
-          </div>
-          <GroupWinRateChart data={winRateByArea} emptyMessage="Not enough decided tenders per area yet." />
-        </div>
-
-        <div className={shared.card} style={{ overflow: "hidden" }}>
-          <div className={shared.cardHeader}>
-            <h2 className={shared.cardTitle}>Win Rate by Entity</h2>
-            <span className={shared.cardMeta}>Entities with at least 3 decided tenders</span>
-          </div>
-          <GroupWinRateChart data={winRateByEntitas} emptyMessage="Not enough decided tenders per entity yet." />
-        </div>
-      </div>
-
-      {track !== "downstream" && (
-        <div className={shared.card} style={{ overflow: "hidden" }}>
-          <div className={shared.cardHeader}>
-            <h2 className={shared.cardTitle}>Pipeline Value by Area</h2>
-            <span className={shared.cardMeta}>OE of currently running tenders, top 8 areas</span>
-          </div>
-          <PipelineValueChart data={pipelineByArea} emptyMessage="No running tenders with an OE value yet." />
-        </div>
-      )}
     </div>
   );
 }

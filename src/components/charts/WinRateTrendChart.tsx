@@ -1,6 +1,14 @@
 "use client";
 
-import { Line, LineChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import {
+  Line,
+  LineChart,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 import type { TooltipContentProps } from "recharts";
 import type { PeriodOutcomeRow } from "@/lib/analytics";
 import { CHART_COLORS } from "./chartColors";
@@ -25,14 +33,19 @@ export function WinRateTrendChart({ data }: { data: PeriodOutcomeRow[] }) {
   if (!hasData) {
     return (
       <div className={styles.chartWrap}>
-        <div className={styles.emptyChart}>Not enough decided tenders yet to show a trend.</div>
+        <div className={styles.emptyChart}>
+          Not enough decided tenders yet to show a trend.
+        </div>
       </div>
     );
   }
   return (
     <div className={styles.chartWrap}>
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 8, right: 16, left: -12, bottom: 0 }}>
+        <LineChart
+          data={data}
+          margin={{ top: 8, right: 16, left: -12, bottom: 0 }}
+        >
           <CartesianGrid stroke={CHART_COLORS.grid} vertical={false} />
           <XAxis
             dataKey="period"
@@ -50,6 +63,7 @@ export function WinRateTrendChart({ data }: { data: PeriodOutcomeRow[] }) {
           />
           <Tooltip content={CustomTooltip} />
           <Line
+            isAnimationActive={false}
             type="monotone"
             dataKey="winRatePct"
             stroke={CHART_COLORS.primary}
