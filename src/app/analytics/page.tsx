@@ -1,5 +1,5 @@
 import { PageHeading } from "@/components/PageHeading";
-import { getAuthContext } from "@/lib/auth/dal";
+import { requireUser } from "@/lib/auth/dal";
 import { MoneyValue, MoneyAccessNotice } from "@/components/MoneyValue";
 import styles from "@/components/Workspace.module.css";
 import { getAllTenders, getFilterOptions } from "@/lib/tenders";
@@ -31,8 +31,7 @@ import chartStyles from "@/components/charts/charts.module.css";
 
 export const dynamic = "force-dynamic";
 
-/** Filters live in the URL. Monetary metrics require a validated session;
- * operational counts and outcome rates remain available to guests. */
+/** All metrics require a validated session. Filters live in the URL. */
 export default async function AnalyticsDashboardPage({
   searchParams,
 }: {
@@ -43,6 +42,7 @@ export default async function AnalyticsDashboardPage({
     customer?: string;
   }>;
 }) {
+  const ctx = await requireUser();
   const params = await searchParams;
   // The default here differs from the tender list on purpose: this is an
   // overview, so it starts on BOTH tracks and you narrow it yourself. A stale
@@ -55,10 +55,7 @@ export default async function AnalyticsDashboardPage({
 
   // Scoped to the chosen track first: the area/period options offered, and the
   // "X of Y" denominator, must describe the track you are actually looking at.
-  const [allTenders, ctx] = await Promise.all([
-    getAllTenders({ track }),
-    getAuthContext(),
-  ]);
+  const allTenders = await getAllTenders({ track });
   const canViewMoney = !!ctx;
   const options = getFilterOptions(allTenders);
 

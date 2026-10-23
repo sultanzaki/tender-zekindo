@@ -18,39 +18,26 @@ import { SESSION_COOKIE_NAME } from "@/lib/auth/sessionCookie";
 // visitor from /login straight back to a protected page, which redirects
 // straight back to /login, forever. src/app/login/page.tsx does that
 // redirect instead, using the real DB-backed getAuthContext() check.
-const PUBLIC_PREFIXES = [
-  "/login",
-  "/",
-  "/tenders",
-  "/notifications",
-  "/analytics",
-];
-
 export function proxy(request: NextRequest) {
   const hasSessionCookie = !!request.cookies.get(SESSION_COOKIE_NAME)?.value;
   const path = request.nextUrl.pathname;
-  const restricted =
-    path.startsWith("/admin") ||
-    path === "/tenders/new" ||
-    path === "/tenders/archive" ||
-    /^\/tenders\/[^/]+\/edit$/.test(path);
-  const isPublic =
-    !restricted &&
-    PUBLIC_PREFIXES.some((p) => path === p || path.startsWith(p + "/"));
-
-  if (!hasSessionCookie && !isPublic) {
+  if (!hasSessionCookie && path !== "/login") {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
     redirectUrl.search = "";
     redirectUrl.searchParams.set("next", path + request.nextUrl.search);
-    return NextResponse.redirect(redirectUrl);
+    const response = NextResponse.redirect(redirectUrl);
+    response.headers.set("Cache-Control", "private, no-store");
+    return response;
   }
 
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-workspace-path", path + request.nextUrl.search);
-  return NextResponse.next({ request: { headers: requestHeaders } });
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set("Cache-Control", "private, no-store");
+  return response;
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|logo.png).*)"],
+  matcher: ["/((?!_next/static/|_next/image$|favicon\\.ico$|logo\\.png$).*)"],
 };

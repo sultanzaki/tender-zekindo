@@ -15,8 +15,7 @@ import { getProfilesByIds } from "./users";
 import { getMilestoneCatalog } from "./milestones";
 import { rowTrack } from "./milestones";
 import { TENDERS_TAG } from "./cache-tags";
-import { getAuthContext } from "./auth/dal";
-import { redactTenderMoney } from "./financial-access";
+import { requireUser, requireAdmin } from "./auth/dal";
 
 // PostgREST (Supabase's REST layer) serializes `numeric` columns as JSON
 // strings, not numbers, to avoid precision loss — so despite the DB column
@@ -101,7 +100,7 @@ const getTendersCached = unstable_cache(
     }
     return withNames(rows);
   },
-  ["tenders:list"],
+  ["tenders:list", process.env.SUPABASE_URL || "unconfigured"],
   { tags: [TENDERS_TAG], revalidate: 30 },
 );
 
@@ -111,16 +110,17 @@ export const getAllTenders = cache(
     includeArchived?: boolean;
     track?: Track | "all";
   }): Promise<Tender[]> => {
-    // Session checks belong outside unstable_cache; the cached data is shared
-    // by guests and signed-in users, whereas these DTOs are request-scoped.
-    const [tenders, ctx] = await Promise.all([
-      getTendersCached(
-        Boolean(options?.includeArchived),
-        options?.track ?? "all",
-      ),
-      getAuthContext(),
-    ]);
-    return ctx ? tenders : tenders.map(redactTenderMoney);
+    // Check on every request, before even looking at the shared cache.
+    const ctx = options?.includeArchived
+      ? await requireAdmin()
+      : await requireUser();
+    const tenders = await getTendersCached(
+      Boolean(options?.includeArchived),
+      options?.track ?? "all",
+    );
+    return ctx.profile.role === "admin"
+      ? tenders
+      : tenders.map((t) => ({ ...t, catatanInternal: null }));
   },
 );
 
@@ -149,6 +149,7 @@ export async function getNotificationCounts(): Promise<NotificationCounts> {
 }
 
 export async function getArchivedTenders(): Promise<Tender[]> {
+  await requireAdmin();
   const { data, error } = await supabaseServer()
     .from("tenders")
     .select("*")
@@ -156,14 +157,11 @@ export async function getArchivedTenders(): Promise<Tender[]> {
     .order("archived_at", { ascending: false });
   if (error)
     throw new Error(`Failed to load archived tenders: ${error.message}`);
-  const [tenders, ctx] = await Promise.all([
-    withNames(data ?? []),
-    getAuthContext(),
-  ]);
-  return ctx ? tenders : tenders.map(redactTenderMoney);
+  return withNames(data ?? []);
 }
 
 export async function getTenderById(id: string): Promise<Tender | null> {
+  const ctx = await requireUser();
   const { data, error } = await supabaseServer()
     .from("tenders")
     .select("*")
@@ -171,8 +169,11 @@ export async function getTenderById(id: string): Promise<Tender | null> {
     .maybeSingle();
   if (error) throw new Error(`Failed to load tender: ${error.message}`);
   if (!data) return null;
+  if (data.archived_at && ctx.profile.role !== "admin") return null;
   const [tender] = await withNames([data]);
-  return (await getAuthContext()) ? tender : redactTenderMoney(tender);
+  return ctx.profile.role === "admin"
+    ? tender
+    : { ...tender, catatanInternal: null };
 }
 
 export function getFilterOptions(tenders: Tender[]): FilterOptions {
@@ -190,6 +191,7 @@ export function getFilterOptions(tenders: Tender[]): FilterOptions {
 export async function getSelectOptions(
   tenders: Tender[],
 ): Promise<SelectOptionsMap> {
+  await requireUser();
   const { data, error } = await supabaseServer()
     .from("select_options")
     .select("field, value");

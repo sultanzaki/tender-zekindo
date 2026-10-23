@@ -33,8 +33,7 @@ const tender = {
 before(async () => {
   directory = await mkdtemp(path.resolve("node_modules/.export-tests-"));
   const mocks = {
-    "@/lib/auth/dal": `export async function getAuthContext() { return globalThis.${stateKey}.ctx; }
-      export async function requireUser() { throw new Error('Export must not require login'); }`,
+    "@/lib/auth/dal": `export async function requireUser() { const ctx=globalThis.${stateKey}.ctx;if(!ctx)throw new Error('UNAUTHORIZED');return ctx; }`,
     "@/lib/tenders": `export async function getAllTenders(options) {
       globalThis.${stateKey}.options = options;
       return globalThis.${stateKey}.tenders.filter(t => options.track === "all" || t.track === options.track);
@@ -89,27 +88,13 @@ async function exportSheet(ctx, query = "") {
   await workbook.xlsx.load(Buffer.from(await response.arrayBuffer()));
   return workbook.getWorksheet("Tenders");
 }
-test("anonymous export returns a valid workbook without internal notes", async () => {
-  const sheet = await exportSheet(null);
-  assert.equal(sheet.rowCount, 2);
-  assert.ok(!sheet.getRow(1).values.includes("Internal Notes"));
-  assert.ok(!sheet.getRow(2).values.includes(tender.catatanInternal));
-  assert.ok(sheet.getRow(2).values.includes("TEST-001"));
-  assert.ok(sheet.getRow(2).values.includes(12.5));
-  const headers = sheet.getRow(1).values;
-  for (const header of ["OE (Rp)", "OE Note", "Bid Value (Rp)"])
-    assert.equal(
-      sheet.getRow(2).getCell(headers.indexOf(header)).value,
-      "Sign in to view",
-    );
-  assert.ok(!sheet.getRow(2).values.includes(tender.oe));
-  assert.ok(!sheet.getRow(2).values.includes(tender.nilaiPenawaran));
-  assert.ok(!sheet.getRow(2).values.includes(tender.oeCatatan));
-  assert.deepEqual(globalThis[stateKey].options, { track: "upstream" });
+test("anonymous export is rejected before reading any tender", async () => {
+  await assert.rejects(exportSheet(null), /UNAUTHORIZED/);
+  assert.equal(globalThis[stateKey].options, undefined);
 });
-test("anonymous export preserves track and search filters", async () => {
+test("signed-in export preserves track and search filters", async () => {
   const sheet = await exportSheet(
-    null,
+    { profile: { role: "viewer" } },
     "?track=downstream&search=does-not-match",
   );
   assert.equal(sheet.rowCount, 1);
@@ -132,7 +117,10 @@ test("admin export retains internal notes and cannot be shared-cached", async ()
 });
 
 test("all-track export includes both tracks without key collisions", async () => {
-  const sheet = await exportSheet(null, "?track=all");
+  const sheet = await exportSheet(
+    { profile: { role: "viewer" } },
+    "?track=all",
+  );
   assert.equal(sheet.rowCount, 3);
   assert.ok(sheet.getRow(1).values.includes("Downstream registration"));
 });

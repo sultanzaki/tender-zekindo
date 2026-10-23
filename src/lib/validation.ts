@@ -35,11 +35,27 @@ export function validateTender(values: TenderFormValues): string | null {
   return null;
 }
 export function safeNextPath(value: string | undefined): string {
-  return value &&
-    value.startsWith("/") &&
-    !value.startsWith("//") &&
-    !value.includes("\\") &&
-    !/[\x00-\x1f]/.test(value)
-    ? value
-    : "/";
+  if (
+    !value ||
+    !value.startsWith("/") ||
+    value.startsWith("//") ||
+    value.includes("\\") ||
+    /[\x00-\x1f]/.test(value)
+  )
+    return "/";
+  try {
+    const path = decodeURIComponent(
+      new URL(value, "https://workspace.invalid").pathname,
+    );
+    if (
+      path.startsWith("//") ||
+      path.includes("\\") ||
+      /[\x00-\x1f]/.test(path) ||
+      path.replace(/\/$/, "") === "/login"
+    )
+      return "/";
+    return value;
+  } catch {
+    return "/";
+  }
 }

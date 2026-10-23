@@ -1,4 +1,5 @@
 import { getAllTenders } from "@/lib/tenders";
+import { requireUser } from "@/lib/auth/dal";
 import { getMilestoneCatalog } from "@/lib/milestones";
 import { computeDeadlines, computeStalled, todayISO } from "@/lib/tender-logic";
 import { DeadlineWorkspace } from "@/components/DeadlineWorkspace";
@@ -8,6 +9,7 @@ export default async function Notifications({
 }: {
   searchParams: Promise<{ view?: string; track?: string }>;
 }) {
+  await requireUser();
   const [tenders, catalog, params] = await Promise.all([
     getAllTenders(),
     getMilestoneCatalog(),

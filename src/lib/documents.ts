@@ -3,6 +3,7 @@ import { unstable_cache } from "next/cache";
 import { supabaseServer } from "./supabase-server";
 import type { DocumentType, TenderDocument } from "./types";
 import { DOCUMENT_TYPES_TAG } from "./cache-tags";
+import { requireUser } from "./auth/dal";
 
 export const DOCUMENT_BUCKET = "tender-documents";
 
@@ -10,7 +11,7 @@ export const DOCUMENT_BUCKET = "tender-documents";
  * used to be re-queried on each tender page render (and once more inside
  * getTenderDocuments). Cached and invalidated by
  * `revalidateTag(DOCUMENT_TYPES_TAG)` from document-actions.ts. */
-export const getDocumentTypes = unstable_cache(
+const getDocumentTypesCached = unstable_cache(
   async (): Promise<DocumentType[]> => {
     const { data, error } = await supabaseServer()
       .from("document_types")
@@ -25,13 +26,19 @@ export const getDocumentTypes = unstable_cache(
       isDefault: r.is_default,
     }));
   },
-  ["document-types:list"],
+  ["document-types:list", process.env.SUPABASE_URL || "unconfigured"],
   { tags: [DOCUMENT_TYPES_TAG], revalidate: 300 },
 );
+
+export async function getDocumentTypes(): Promise<DocumentType[]> {
+  await requireUser();
+  return getDocumentTypesCached();
+}
 
 export async function getTenderDocuments(
   tenderId: string,
 ): Promise<TenderDocument[]> {
+  await requireUser();
   const [types, rowsRes] = await Promise.all([
     getDocumentTypes(),
     supabaseServer()
@@ -47,17 +54,6 @@ export async function getTenderDocuments(
   // O(types x rows) for no reason.
   const rowByType = new Map(rows.map((r) => [r.document_type_id, r]));
 
-  const paths = rows
-    .map((row) => row.file_path)
-    .filter((path): path is string => !!path);
-  const signed = paths.length
-    ? await supabaseServer()
-        .storage.from(DOCUMENT_BUCKET)
-        .createSignedUrls(paths, 300)
-    : { data: [] };
-  const urlByPath = new Map(
-    (signed.data ?? []).map((item) => [item.path, item.signedUrl]),
-  );
   return types.map((type): TenderDocument => {
     const row = rowByType.get(type.id);
     return {
@@ -66,7 +62,9 @@ export async function getTenderDocuments(
       checked: row?.checked ?? false,
       filePath: row?.file_path ?? null,
       fileName: row?.file_name ?? null,
-      fileUrl: row?.file_path ? (urlByPath.get(row.file_path) ?? null) : null,
+      fileUrl: row?.file_path
+        ? `/tenders/${encodeURIComponent(tenderId)}/download?document=${encodeURIComponent(type.id)}`
+        : null,
       updatedAt: row?.updated_at ?? null,
     };
   });

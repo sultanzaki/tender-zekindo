@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import { getAuthContext } from "@/lib/auth/dal";
+import { requireUser } from "@/lib/auth/dal";
 import { getAllTenders } from "@/lib/tenders";
 import { getMilestoneTypes, getMilestoneCatalog } from "@/lib/milestones";
 import { filterTenders } from "@/lib/tender-logic";
@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 const msKey = (key: string) => `ms_${key}`;
 
 export async function GET(request: Request) {
-  const ctx = await getAuthContext();
+  const ctx = await requireUser();
   const isAdmin = ctx?.profile.role === "admin";
 
   const { searchParams } = new URL(request.url);

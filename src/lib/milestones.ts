@@ -4,6 +4,7 @@ import { supabaseServer } from "./supabase-server";
 import { MILESTONE_TYPES_TAG } from "./cache-tags";
 import { defaultMilestoneTypes, type MilestoneCatalog } from "./tender-logic";
 import type { MilestoneType, MilestoneTypeAdmin, Track } from "./types";
+import { requireUser, requireAdmin } from "./auth/dal";
 
 /** The database stores `track` as text, with a CHECK constraint behind it. The
  * app narrows it here once, so nothing downstream ever holds an unknown track. */
@@ -55,13 +56,14 @@ const getMilestoneTypesCached = unstable_cache(
       showInTable: r.show_in_table,
     }));
   },
-  ["milestone-types:list"],
+  ["milestone-types:list", process.env.SUPABASE_URL || "unconfigured"],
   { tags: [MILESTONE_TYPES_TAG], revalidate: 300 },
 );
 
 export async function getMilestoneTypes(
   track: Track,
 ): Promise<MilestoneType[]> {
+  await requireUser();
   return getMilestoneTypesCached(track);
 }
 
@@ -69,6 +71,7 @@ export async function getMilestoneTypes(
  * and the nav badge. Passing only one of them would resolve the other track's
  * tenders against the wrong catalog and render them with no milestones. */
 export async function getMilestoneCatalog(): Promise<MilestoneCatalog> {
+  await requireUser();
   const [upstream, downstream] = await Promise.all([
     getMilestoneTypesCached("upstream"),
     getMilestoneTypesCached("downstream"),
@@ -114,6 +117,7 @@ export function slugifyMilestoneKey(
 export async function getMilestoneTypesForAdmin(
   track: Track,
 ): Promise<MilestoneTypeAdmin[]> {
+  await requireAdmin();
   const { data, error } = await supabaseServer()
     .from("milestone_types")
     .select("*")
@@ -137,6 +141,7 @@ export async function getMilestoneTypesForAdmin(
 export async function getMilestoneLabels(
   keys: string[],
 ): Promise<Map<string, string>> {
+  await requireUser();
   if (!keys.length) return new Map();
   const { data } = await supabaseServer()
     .from("milestone_types")

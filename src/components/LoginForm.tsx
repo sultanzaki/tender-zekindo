@@ -27,7 +27,7 @@ export function LoginForm({ next }: { next: string }) {
         <p className="eyebrow">ACCOUNT ACCESS</p>
         <h1 className={styles.title}>Welcome back.</h1>
         <p className={styles.subtitle}>
-          Sign in to manage tenders, schedules, documents, and workspace access.
+          Sign in to access tenders, analytics, schedules, and documents.
         </p>
         <form action={action} className={styles.fieldColumn}>
           <input type="hidden" name="next" value={next} />
@@ -86,9 +86,6 @@ export function LoginForm({ next }: { next: string }) {
           Need an account or a password reset? Contact your workspace
           administrator.
         </p>
-        <Link href="/" className={styles.back}>
-          ← Continue to public workspace
-        </Link>
       </section>
       <footer className={styles.footer}>PT Zeus Kimiatama Indonesia</footer>
     </main>

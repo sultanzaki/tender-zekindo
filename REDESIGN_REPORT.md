@@ -1,5 +1,9 @@
 # Tender workspace redesign
 
+The current access policy requires login for the entire workspace. The security
+update in [SECURITY_REVIEW.md](SECURITY_REVIEW.md) supersedes the earlier public
+browsing/export behavior recorded in this historical redesign report.
+
 Implemented the plan in [REDESIGN_PLAN.md](REDESIGN_PLAN.md). The visual identity
 remains Zekindo blue/white with Poppins; navigation and information architecture
 have been rebuilt around daily tender work.

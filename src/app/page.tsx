@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getAllTenders } from "@/lib/tenders";
-import { getAuthContext } from "@/lib/auth/dal";
+import { requireUser } from "@/lib/auth/dal";
 import { MoneyValue, MoneyAccessNotice } from "@/components/MoneyValue";
 import { getMilestoneCatalog } from "@/lib/milestones";
 import {
@@ -21,15 +21,15 @@ export default async function Overview({
 }: {
   searchParams: Promise<{ track?: string }>;
 }) {
+  const ctx = await requireUser();
   const params = await searchParams;
   const track: Track | "all" =
     params.track === "upstream" || params.track === "downstream"
       ? params.track
       : "all";
-  const [tenders, catalog, ctx] = await Promise.all([
+  const [tenders, catalog] = await Promise.all([
     getAllTenders({ track }),
     getMilestoneCatalog(),
-    getAuthContext(),
   ]);
   const today = todayISO();
   const deadlines = computeDeadlines(tenders, today, catalog);

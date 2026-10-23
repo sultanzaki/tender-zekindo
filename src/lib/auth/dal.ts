@@ -29,7 +29,12 @@ export const getAuthContext = cache(async (): Promise<AuthContext | null> => {
       .select("id, email, name, role, created_at")
       .eq("id", userId)
       .maybeSingle();
-    if (error || !profileRow) return null;
+    if (
+      error ||
+      !profileRow ||
+      (profileRow.role !== "admin" && profileRow.role !== "viewer")
+    )
+      return null;
 
     return {
       userId,

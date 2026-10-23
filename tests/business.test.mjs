@@ -228,6 +228,12 @@ test("login return paths and upload paths cannot escape their scope", () => {
     "//example.com",
     "/\\example.com",
     "https://example.com",
+    "/%2f%2fexample.com",
+    "/%5cexample.com",
+    "/login?next=/tenders",
+    "/tenders/../login/",
+    "/%6cogin",
+    "/%0aexample.com",
   ])
     assert.equal(api.safeNextPath(value), "/");
   assert.equal(api.safeNextPath("/tenders?track=all"), "/tenders?track=all");

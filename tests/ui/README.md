@@ -15,3 +15,10 @@ server, browser and generated bundles are removed after the run.
 Excel code with isolated persistence. For read-only checks of a running app, use
 `SMOKE_BASE_URL=http://localhost:3002 CHROMIUM_PATH=/usr/bin/chromium node tests/live-smoke.mjs`.
 See [REDESIGN_REPORT.md](../../REDESIGN_REPORT.md) for verification and limits.
+
+After `npm run build`, run `CHROMIUM_PATH=/usr/bin/chromium npm run test:security`
+for production HTTP, real login/logout, role, Server Action, CSRF and download
+checks. This starts a production Next.js server against loopback-only Supabase
+fixtures, including fixture session writes. It never uses the hosted database.
+`tests/live-smoke.mjs` now checks the closed access policy against a running app;
+it no longer expects public tender pages or anonymous workbooks.

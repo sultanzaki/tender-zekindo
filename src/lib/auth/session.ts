@@ -20,7 +20,11 @@ export async function createSession(userId: string): Promise<void> {
 
   const { error } = await supabaseServer()
     .from("sessions")
-    .insert({ id: hashToken(token), user_id: userId, expires_at: expiresAt.toISOString() });
+    .insert({
+      id: hashToken(token),
+      user_id: userId,
+      expires_at: expiresAt.toISOString(),
+    });
   if (error) throw new Error(`Failed to create session: ${error.message}`);
 
   const cookieStore = await cookies();
@@ -38,7 +42,14 @@ export async function destroySession(): Promise<void> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
   if (token) {
-    await supabaseServer().from("sessions").delete().eq("id", hashToken(token));
+    const { error } = await supabaseServer()
+      .from("sessions")
+      .delete()
+      .eq("id", hashToken(token));
+    if (error)
+      throw new Error(
+        "Unable to revoke this session. Please retry signing out.",
+      );
   }
   cookieStore.delete(SESSION_COOKIE_NAME);
 }
@@ -46,13 +57,17 @@ export async function destroySession(): Promise<void> {
 /** Revokes every session for a user — used when an admin resets someone's
  * password, so a stolen/old session can't outlive the password change. */
 export async function destroyAllSessionsForUser(userId: string): Promise<void> {
-  await supabaseServer().from("sessions").delete().eq("user_id", userId);
+  const { error } = await supabaseServer()
+    .from("sessions")
+    .delete()
+    .eq("user_id", userId);
+  if (error) throw new Error("Unable to revoke existing sessions.");
 }
 
 export async function getSessionUserId(): Promise<string | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-  if (!token) return null;
+  if (!token || !/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
 
   const { data, error } = await supabaseServer()
     .from("sessions")
@@ -60,6 +75,8 @@ export async function getSessionUserId(): Promise<string | null> {
     .eq("id", hashToken(token))
     .maybeSingle();
   if (error || !data) return null;
-  if (new Date(data.expires_at).getTime() < Date.now()) return null;
+  const expires = new Date(data.expires_at).getTime();
+  if (!data.user_id || !Number.isFinite(expires) || expires <= Date.now())
+    return null;
   return data.user_id;
 }

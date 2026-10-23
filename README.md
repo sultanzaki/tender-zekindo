@@ -9,31 +9,33 @@ Claude Design handoff bundle described below (`project/`, `chats/`).
 The application retains Zekindo's blue/white design and Poppins typography, with
 sidebar navigation on desktop and bottom navigation on phones.
 
-| Route               | Workflow                                                                   |
-| ------------------- | -------------------------------------------------------------------------- |
-| `/`                 | Operational overview, upcoming milestones, follow-up queue, recent tenders |
-| `/analytics`        | Filterable outcomes, known pipeline, customer/area/entity performance      |
-| `/tenders`          | Search, URL filters, saved browser views, columns, mobile cards            |
-| `/tenders/:id`      | Overview, documents, and administrator activity history                    |
-| `/notifications`    | Scoped deadline views, follow-up queue, calendar download                  |
-| `/tenders/export`   | Public Excel export matching track and filters                             |
-| `/admin/users`      | Account creation, role changes, password reset, removal                    |
-| `/admin/milestones` | Independent milestone catalogs by track                                    |
-| `/tenders/archive`  | Restore or confirm permanent deletion of archived tenders                  |
+| Route                   | Workflow                                                                   |
+| ----------------------- | -------------------------------------------------------------------------- |
+| `/`                     | Operational overview, upcoming milestones, follow-up queue, recent tenders |
+| `/analytics`            | Filterable outcomes, known pipeline, customer/area/entity performance      |
+| `/tenders`              | Search, URL filters, saved browser views, columns, mobile cards            |
+| `/tenders/:id`          | Overview, documents, and administrator activity history                    |
+| `/notifications`        | Scoped deadline views, follow-up queue, calendar download                  |
+| `/tenders/export`       | Signed-in Excel export matching track and filters                          |
+| `/tenders/:id/download` | Session-checked document downloads                                         |
+| `/admin/users`          | Account creation, role changes, password reset, removal                    |
+| `/admin/milestones`     | Independent milestone catalogs by track                                    |
+| `/tenders/archive`      | Restore or confirm permanent deletion of archived tenders                  |
 
-Tender browsing and Excel export are public, but monetary values (OE, bid value,
-price per liter, OE notes and financial analytics) require a valid login as viewer
-or administrator. Guests see blurred placeholders; original amounts are removed
-server-side before HTML/client data is generated. Guest workbooks retain the
-columns with "Sign in to view" instead of amounts. The shared tender cache is
-redacted per request, outside the cache, so access cannot cross user sessions.
-Mutations, archives, internal notes, and
-activity history require administrator access. The browser's saved views contain
+The entire workspace requires a valid login as viewer or administrator, including
+Overview, analytics, tender lists/details, deadlines, Excel exports and documents.
+Only `/login` and the technical assets needed to render it are public. Session
+checks run before data reads and outside shared caches. Document downloads check
+the session on every request and stream private storage objects through the app;
+they do not issue shareable signed download URLs. Responses use `private, no-store`.
+Mutations, archives, internal notes and activity history require administrator
+access. Viewer payloads omit internal notes. The browser's saved views contain
 filter preferences only. All reported win rates use WIN / (WIN + LOSS); pipeline
 includes only known OE values on active tenders. Dates use Asia/Jakarta (WIB).
 
 For the redesign plan and verification evidence, see [REDESIGN_PLAN.md](REDESIGN_PLAN.md)
-and [REDESIGN_REPORT.md](REDESIGN_REPORT.md).
+and [REDESIGN_REPORT.md](REDESIGN_REPORT.md). The current access policy, security
+verification and remaining limits are recorded in [SECURITY_REVIEW.md](SECURITY_REVIEW.md).
 
 ### Checks
 
@@ -44,6 +46,7 @@ npx playwright install chromium
 npm run test:ui
 npm run lint
 npm run build
+npm run test:security  # production build + isolated loopback database fixtures
 ```
 
 A system Chromium can be selected with `CHROMIUM_PATH=/usr/bin/chromium`.
@@ -101,6 +104,10 @@ How it works:
   `requireUser()`/`requireAdmin()` (`src/lib/auth/dal.ts`), called at the
   top of every protected page and Server Action. That's the actual security
   boundary, not the proxy.
+- **Login protection**: invalid credentials use the same message and bcrypt work
+  for unknown and known accounts. A bounded, per-process throttle reserves at most
+  10 attempts per email per 15 minutes. Multi-instance hosting also needs an edge
+  or distributed rate limit; local memory alone cannot enforce a global limit.
 
 **Creating the first admin** (there's no bootstrapping problem here, unlike
 with Supabase Auth's invite-only flow — just insert the row directly):
@@ -143,9 +150,8 @@ is the authorization boundary, not Postgres RLS.
   types) with optional file upload per item, stored in the private
   `tender-documents` Storage bucket (created by
   `supabase/migrations/0003_documents_notifications.sql`, no manual Dashboard
-  step needed). Files are only ever reached through the service-role client
-  (short-lived signed URLs for viewing), same authorization model as the rest
-  of the app.
+  step needed). Downloads pass through a session-checked application route
+  using the server-only service-role client. Signed download URLs are not exposed.
 - **Notifications page** (`/notifications`, linked from the bell icon in the
   top nav): "Due Soon" (milestones within 14 days, no result yet) and
   "Awaiting Result — No Upcoming Milestone" (active tenders with nothing left

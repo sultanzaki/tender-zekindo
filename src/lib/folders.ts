@@ -1,6 +1,6 @@
 import "server-only";
 import { supabaseServer } from "./supabase-server";
-import { DOCUMENT_BUCKET } from "./documents";
+import { requireUser } from "./auth/dal";
 import type {
   DocumentFile,
   DocumentFolder,
@@ -31,18 +31,13 @@ export interface SectionDescriptor {
 }
 
 /**
- * Every folder and file of one tender, with signed URLs already attached.
- *
- * Two queries total, regardless of how many documents there are or how deep the
- * folders nest: the tree is assembled in JS by buildDocumentSections(). The
- * signed URLs are the one call per file that cannot be avoided (the bucket is
- * private), but they are issued together instead of one after another — doing
- * that sequentially is what made the old detail page pay a round trip to
- * Singapore per attachment.
+ * Two queries load the tree regardless of depth. Download URLs stay inside
+ * the application and validate a live session on every request.
  */
 export async function getTenderFileTree(
   tenderId: string,
 ): Promise<TenderFileTree> {
+  await requireUser();
   const [foldersRes, filesRes] = await Promise.all([
     supabaseServer()
       .from("tender_folders")
@@ -68,18 +63,6 @@ export async function getTenderFileTree(
   const folderRows = foldersRes.data ?? [];
   const fileRows = filesRes.data ?? [];
 
-  const signed = fileRows.length
-    ? await supabaseServer()
-        .storage.from(DOCUMENT_BUCKET)
-        .createSignedUrls(
-          fileRows.map((row) => row.file_path),
-          300,
-        )
-    : { data: [] };
-  const urlByPath = new Map(
-    (signed.data ?? []).map((item) => [item.path, item.signedUrl]),
-  );
-
   return {
     folders: folderRows.map((r) => ({
       id: r.id,
@@ -94,7 +77,7 @@ export async function getTenderFileTree(
       milestoneKey: r.milestone_key,
       documentTypeId: r.document_type_id,
       fileName: r.file_name,
-      fileUrl: urlByPath.get(r.file_path) ?? null,
+      fileUrl: `/tenders/${encodeURIComponent(tenderId)}/download?file=${encodeURIComponent(r.id)}`,
       sizeBytes: r.size_bytes,
       createdAt: r.created_at,
     })),

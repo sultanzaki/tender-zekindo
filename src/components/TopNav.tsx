@@ -68,7 +68,7 @@ export function TopNav({
     document.addEventListener("keydown", shortcut);
     return () => document.removeEventListener("keydown", shortcut);
   }, []);
-  if (path === "/login") return <>{children}</>;
+  if (path === "/login" || !profile) return <>{children}</>;
   const isAdmin = profile?.role === "admin";
   function active(href: string) {
     if (href === "/") return path === "/";
@@ -138,7 +138,7 @@ export function TopNav({
               ? isAdmin
                 ? "Administrator"
                 : "Read-only access"
-              : "Public workspace"}
+              : "Sign-in required"}
           </span>
           <button
             className={styles.accountButton}
@@ -186,9 +186,12 @@ export function TopNav({
               <CreateLink />
             </Suspense>
           ) : (
-            <Link className="button button-secondary" href="/login">
-              Sign in
-            </Link>
+            <button
+              className="button button-secondary"
+              onClick={() => account.current?.showModal()}
+            >
+              Account
+            </button>
           )}
         </header>
         <main id="main-content" className={styles.content} tabIndex={-1}>
@@ -234,8 +237,7 @@ export function TopNav({
           </button>
         </div>
         <p className="muted">
-          {profile?.email ||
-            "Explore tender data and download Excel without signing in."}
+          {profile?.email || "Sign in to access the workspace."}
         </p>
         <nav className={styles.navigation} aria-label="Account actions">
           {isAdmin && (

@@ -12,7 +12,7 @@ before(async () => {
     "server-only": "",
     react: "export const cache=fn=>fn;",
     "next/cache": `export const unstable_cache=fn=>async(...args)=>{const state=globalThis.${key};state.cached??=new Map();const cacheKey=JSON.stringify(args);if(!state.cached.has(cacheKey))state.cached.set(cacheKey,await fn(...args));return state.cached.get(cacheKey);};`,
-    "./auth/dal": `export async function getAuthContext(){return globalThis.${key}.ctx??null;}`,
+    "./auth/dal": `export async function requireUser(){const ctx=globalThis.${key}.ctx;if(!ctx)throw new Error('UNAUTHORIZED');return ctx;}export async function requireAdmin(){const ctx=await requireUser();if(ctx.profile.role!=='admin')throw new Error('FORBIDDEN');return ctx;}`,
     "./users": "export async function getProfilesByIds(){return new Map();}",
     "./milestones": `export const rowTrack=value=>value==='downstream'?'downstream':'upstream';export async function getMilestoneCatalog(){return {upstream:[],downstream:[]};}`,
     "./supabase-server": `export function supabaseServer(){return {from(){let first=0,last=999,single=false;const filters={};const chain={select(){return chain;},order(){return chain;},is(name,value){filters[name]=value;return chain;},eq(name,value){filters[name]=value;return chain;},range(a,b){first=a;last=b;return chain;},maybeSingle(){single=true;return chain;},then(resolve,reject){const state=globalThis.${key};state.calls++;const rows=state.rows.filter(row=>Object.entries(filters).every(([name,value])=>row[name]===value));return Promise.resolve({data:single?(rows[0]??null):rows.slice(first,last+1),error:null}).then(resolve,reject);}};return chain;}};}`,
@@ -75,6 +75,7 @@ test("legacy text IDs remain readable and numeric values retain decimals", async
 test("cached reads paginate beyond the default 1000-row API limit", async () => {
   globalThis[key] = {
     calls: 0,
+    ctx: { profile: { role: "viewer" } },
     rows: Array.from({ length: 1001 }, (_, i) => ({
       id: `T${i}`,
       row_no: i,
@@ -90,7 +91,7 @@ test("cached reads paginate beyond the default 1000-row API limit", async () => 
   assert.equal(new Set(rows.map((row) => row.id)).size, 1001);
 });
 
-test("guest list and detail redact every monetary field but retain quantity", async () => {
+test("guest reads are rejected before querying tender data", async () => {
   globalThis[key] = {
     calls: 0,
     rows: [
@@ -107,17 +108,17 @@ test("guest list and detail redact every monetary field but retain quantity", as
       },
     ],
   };
-  for (const record of [
-    ...(await api.getAllTenders()),
-    await api.getTenderById("T0001"),
-  ]) {
-    assert.equal(record.qty, 12.5);
-    for (const field of ["oe", "nilaiPenawaran", "idrPerL", "oeCatatan"])
-      assert.equal(record[field], null, field);
-  }
+  for (const read of [
+    () => api.getAllTenders(),
+    () => api.getTenderById("T0001"),
+    () => api.getArchivedTenders(),
+    () => api.getSelectOptions([]),
+  ])
+    await assert.rejects(read(), /UNAUTHORIZED/);
+  assert.equal(globalThis[key].calls, 0);
 });
 
-test("shared tender cache never leaks money or loses amounts when switching viewers", async () => {
+test("shared cache cannot bypass login or leak admin notes to viewers", async () => {
   const state = (globalThis[key] = {
     calls: 0,
     rows: [
@@ -127,6 +128,7 @@ test("shared tender cache never leaks money or loses amounts when switching view
         nilai_penawaran: 987654.32,
         idr_per_l: 15000.75,
         oe_catatan: "Financial note",
+        catatan_internal: "ADMIN ONLY",
         milestones: {},
         track: "upstream",
         archived_at: null,
@@ -135,6 +137,11 @@ test("shared tender cache never leaks money or loses amounts when switching view
   });
   for (const role of [null, "viewer", null, "admin", null]) {
     state.ctx = role ? { profile: { role } } : null;
+    if (!role) {
+      await assert.rejects(api.getAllTenders(), /UNAUTHORIZED/);
+      await assert.rejects(api.getTenderById("T0001"), /UNAUTHORIZED/);
+      continue;
+    }
     const [tender] = await api.getAllTenders();
     assert.equal(tender.oe, role ? 1234567.89 : null);
     assert.equal(tender.nilaiPenawaran, role ? 987654.32 : null);
@@ -142,10 +149,40 @@ test("shared tender cache never leaks money or loses amounts when switching view
     assert.equal(tender.oeCatatan, role ? "Financial note" : null);
     const detail = await api.getTenderById("T0001");
     assert.equal(detail.oe, role ? 1234567.89 : null);
+    assert.equal(
+      tender.catatanInternal,
+      role === "admin" ? "ADMIN ONLY" : null,
+    );
+    assert.equal(
+      detail.catatanInternal,
+      role === "admin" ? "ADMIN ONLY" : null,
+    );
   }
   assert.equal(
     state.cached.size,
     1,
-    "all roles share the raw cache, never the redacted result",
+    "the raw cache is shared only after a per-request authorization check",
   );
+});
+
+test("viewers cannot request archived lists or archived tender details", async () => {
+  globalThis[key] = {
+    calls: 0,
+    ctx: { profile: { role: "viewer" } },
+    rows: [
+      {
+        id: "archived",
+        archived_at: "2026-10-23",
+        milestones: {},
+        track: "upstream",
+      },
+    ],
+  };
+  await assert.rejects(api.getArchivedTenders(), /FORBIDDEN/);
+  await assert.rejects(
+    api.getAllTenders({ includeArchived: true }),
+    /FORBIDDEN/,
+  );
+  assert.equal(globalThis[key].calls, 0);
+  assert.equal(await api.getTenderById("archived"), null);
 });

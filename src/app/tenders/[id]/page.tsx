@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getAuthContext } from "@/lib/auth/dal";
+import { requireUser } from "@/lib/auth/dal";
 import { getTenderById } from "@/lib/tenders";
 import { getMilestoneTypes, getMilestoneLabels } from "@/lib/milestones";
 import { getTenderDocuments } from "@/lib/documents";
@@ -41,11 +41,8 @@ export default async function Detail({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ tab?: string; returnTo?: string }>;
 }) {
-  const [{ id }, query, ctx] = await Promise.all([
-    params,
-    searchParams,
-    getAuthContext(),
-  ]);
+  const ctx = await requireUser();
+  const [{ id }, query] = await Promise.all([params, searchParams]);
   const tender = await getTenderById(id);
   const isAdmin = ctx?.profile.role === "admin";
   if (!tender || (tender.archivedAt && !isAdmin)) notFound();

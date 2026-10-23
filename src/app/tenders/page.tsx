@@ -1,4 +1,4 @@
-import { getAuthContext } from "@/lib/auth/dal";
+import { requireUser } from "@/lib/auth/dal";
 import { getAllTenders, getFilterOptions } from "@/lib/tenders";
 import { getMilestoneTypes, getMilestoneCatalog } from "@/lib/milestones";
 import { todayISO } from "@/lib/tender-logic";
@@ -13,7 +13,7 @@ export default async function TenderTablePage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const ctx = await getAuthContext();
+  const ctx = await requireUser();
   const sp = await searchParams;
   const track = sp.track === "all" ? "all" : trackFromParam(sp.track);
 

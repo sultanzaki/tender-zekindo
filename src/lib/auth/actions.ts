@@ -12,6 +12,7 @@ import {
 import { requireAdmin } from "./dal";
 import { safeNextPath } from "../validation";
 import type { UserRole } from "../types";
+import { reserveLoginAttempt, clearLoginAttempts } from "./login-throttle";
 
 export interface FormState {
   error?: string;
@@ -19,6 +20,9 @@ export interface FormState {
 
 const BCRYPT_ROUNDS = 10;
 const MIN_PASSWORD_LENGTH = 8;
+// Same work factor for unknown accounts, so the error path does not skip bcrypt.
+const DUMMY_HASH =
+  "$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
 
 export async function login(
   _prevState: FormState | undefined,
@@ -29,6 +33,12 @@ export async function login(
     .toLowerCase();
   const password = String(formData.get("password") || "");
   if (!email || !password) return { error: "Enter your email and password." };
+  if (email.length > 254 || password.length > 1024)
+    return { error: "Incorrect email or password." };
+  if (!reserveLoginAttempt(email))
+    return {
+      error: "Too many sign-in attempts. Please try again in 15 minutes.",
+    };
 
   try {
     const { data: profile, error } = await supabaseServer()
@@ -38,12 +48,14 @@ export async function login(
       .maybeSingle();
     if (error)
       return { error: "Sign-in is temporarily unavailable. Please try again." };
-    if (
-      !profile?.password_hash ||
-      !(await bcrypt.compare(password, profile.password_hash))
-    )
+    const matches = await bcrypt.compare(
+      password,
+      profile?.password_hash || DUMMY_HASH,
+    );
+    if (!profile?.password_hash || !matches)
       return { error: "Incorrect email or password." };
     await createSession(profile.id);
+    clearLoginAttempts(email);
   } catch {
     return { error: "Unable to sign in. Check your connection and try again." };
   }
@@ -119,7 +131,14 @@ export async function resetUserPassword(
     .eq("id", userId);
   if (error) return { error: error.message };
 
-  await destroyAllSessionsForUser(userId);
+  try {
+    await destroyAllSessionsForUser(userId);
+  } catch {
+    return {
+      error:
+        "The password changed, but existing sessions could not be revoked. Retry the reset before considering it complete.",
+    };
+  }
   revalidatePath("/admin/users");
 }
 

@@ -1,8 +1,10 @@
 import "server-only";
 import { supabaseServer } from "./supabase-server";
 import type { Profile } from "./types";
+import { requireAdmin } from "./auth/dal";
 
 export async function getAllProfiles(): Promise<Profile[]> {
+  await requireAdmin();
   const { data, error } = await supabaseServer()
     .from("profiles")
     .select("id, email, name, role, created_at")
