@@ -1,7 +1,8 @@
 "use client";
 
 import type { TrackComparisonRow } from "@/lib/analytics";
-import { formatCompactRupiah } from "@/lib/analytics";
+import type { ReactNode } from "react";
+import { MoneyValue } from "../MoneyValue";
 import { CHART_COLORS } from "./chartColors";
 import styles from "./charts.module.css";
 
@@ -10,10 +11,23 @@ const META: Record<string, { label: string; color: string }> = {
   downstream: { label: "Downstream", color: CHART_COLORS.success },
 };
 
-export function TrackComparisonChart({ data }: { data: TrackComparisonRow[] }) {
+export function TrackComparisonChart({
+  data,
+  canViewMoney = false,
+}: {
+  data: TrackComparisonRow[];
+  canViewMoney?: boolean;
+}) {
   if (!data.length) {
     return (
-      <div style={{ padding: "40px 20px", textAlign: "center", fontSize: 13, color: "#64748b" }}>
+      <div
+        style={{
+          padding: "40px 20px",
+          textAlign: "center",
+          fontSize: 13,
+          color: "#64748b",
+        }}
+      >
         No tender data available.
       </div>
     );
@@ -24,12 +38,16 @@ export function TrackComparisonChart({ data }: { data: TrackComparisonRow[] }) {
       {data.map((row) => {
         const meta = META[row.track];
         return (
-          <div
-            key={row.track}
-            style={{ flex: 1 }}
-          >
+          <div key={row.track} style={{ flex: 1 }}>
             {/* Track label with dot */}
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                marginBottom: 10,
+              }}
+            >
               <span
                 style={{
                   width: 10,
@@ -46,14 +64,46 @@ export function TrackComparisonChart({ data }: { data: TrackComparisonRow[] }) {
             {/* Metrics */}
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <MetricRow label="Tenders" value={`${row.count}`} />
-              <MetricRow label="Pipeline Value" value={formatCompactRupiah(row.pipelineValue)} />
-              <MetricRow label="Win Value" value={formatCompactRupiah(row.winValue)} />
+              <MetricRow
+                label="Pipeline Value"
+                value={
+                  <MoneyValue
+                    value={row.pipelineValue}
+                    canView={canViewMoney}
+                    compact
+                  />
+                }
+              />
+              <MetricRow
+                label="Win Value"
+                value={
+                  <MoneyValue
+                    value={row.winValue}
+                    canView={canViewMoney}
+                    compact
+                  />
+                }
+              />
             </div>
 
             {/* Win rate — large number */}
-            <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #e2e8f0" }}>
-              <div style={{ fontSize: 11, color: "#64748b", marginBottom: 2 }}>Win Rate</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: meta?.color ?? "#0f172a" }}>
+            <div
+              style={{
+                marginTop: 10,
+                paddingTop: 10,
+                borderTop: "1px solid #e2e8f0",
+              }}
+            >
+              <div style={{ fontSize: 11, color: "#64748b", marginBottom: 2 }}>
+                Win Rate
+              </div>
+              <div
+                style={{
+                  fontSize: 22,
+                  fontWeight: 700,
+                  color: meta?.color ?? "#0f172a",
+                }}
+              >
                 {row.winRate !== null ? `${row.winRate}%` : "—"}
               </div>
             </div>
@@ -64,9 +114,16 @@ export function TrackComparisonChart({ data }: { data: TrackComparisonRow[] }) {
   );
 }
 
-function MetricRow({ label, value }: { label: string; value: string }) {
+function MetricRow({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12 }}>
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        fontSize: 12,
+      }}
+    >
       <span style={{ color: "#64748b" }}>{label}</span>
       <span style={{ fontWeight: 500, color: "#0f172a" }}>{value}</span>
     </div>

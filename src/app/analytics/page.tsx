@@ -1,4 +1,6 @@
 import { PageHeading } from "@/components/PageHeading";
+import { getAuthContext } from "@/lib/auth/dal";
+import { MoneyValue, MoneyAccessNotice } from "@/components/MoneyValue";
 import styles from "@/components/Workspace.module.css";
 import { getAllTenders, getFilterOptions } from "@/lib/tenders";
 import {
@@ -29,11 +31,8 @@ import chartStyles from "@/components/charts/charts.module.css";
 
 export const dynamic = "force-dynamic";
 
-/** The landing page IS the analytics dashboard. The old Deadlines / Stats / Loss
- * Breakdown widgets were dropped in favour of this (the "due soon" list still
- * lives on /notifications and in the nav bell). Everything here answers to the
- * area, period and track filters, which live in the URL so a filtered view can
- * be bookmarked and reached with the Back button. */
+/** Filters live in the URL. Monetary metrics require a validated session;
+ * operational counts and outcome rates remain available to guests. */
 export default async function AnalyticsDashboardPage({
   searchParams,
 }: {
@@ -56,7 +55,11 @@ export default async function AnalyticsDashboardPage({
 
   // Scoped to the chosen track first: the area/period options offered, and the
   // "X of Y" denominator, must describe the track you are actually looking at.
-  const allTenders = await getAllTenders({ track });
+  const [allTenders, ctx] = await Promise.all([
+    getAllTenders({ track }),
+    getAuthContext(),
+  ]);
+  const canViewMoney = !!ctx;
   const options = getFilterOptions(allTenders);
 
   // A value that no longer exists is treated as "no filter" rather than as an
@@ -89,7 +92,9 @@ export default async function AnalyticsDashboardPage({
   const lossRows = lossReasonByPeriod(tenders, periods);
   const winRateByArea = winRateByGroup(tenders, (t) => t.area);
   const winRateByEntitas = winRateByGroup(tenders, (t) => t.entitas);
-  const pipelineByArea = pipelineValueByGroup(tenders, (t) => t.area);
+  const pipelineByArea = canViewMoney
+    ? pipelineValueByGroup(tenders, (t) => t.area)
+    : [];
   const statusData = statusBreakdown(tenders);
   const trackData = trackComparison(tenders);
 
@@ -142,17 +147,26 @@ export default async function AnalyticsDashboardPage({
         track={track}
       />
 
-      <KpiCards data={kpiData} />
+      {!canViewMoney && (
+        <MoneyAccessNotice returnTo={`/analytics?${exportParams}`} />
+      )}
+      <KpiCards data={kpiData} canViewMoney={canViewMoney} />
       <div className={styles.note}>
         Win rate = WIN ÷ (WIN + LOSS). Canceled, withdrawn, retender, and
         no-info outcomes are excluded. Pipeline = known OE of active tenders
-        only. {tenders.filter((t) => !t.result && t.oe === null).length} active
-        tenders have no OE;{" "}
-        {
-          tenders.filter((t) => t.result === "WIN" && t.nilaiPenawaran === null)
-            .length
-        }{" "}
-        won tenders have no recorded bid value.
+        only.{" "}
+        {canViewMoney && (
+          <>
+            {tenders.filter((t) => !t.result && t.oe === null).length} active
+            tenders have no OE;{" "}
+            {
+              tenders.filter(
+                (t) => t.result === "WIN" && t.nilaiPenawaran === null,
+              ).length
+            }{" "}
+            won tenders have no recorded bid value.
+          </>
+        )}
       </div>
 
       {
@@ -208,7 +222,7 @@ export default async function AnalyticsDashboardPage({
             <h2 className={shared.cardTitle}>Track Comparison</h2>
             <span className={shared.cardMeta}>Upstream vs downstream</span>
           </div>
-          <TrackComparisonChart data={trackData} />
+          <TrackComparisonChart data={trackData} canViewMoney={canViewMoney} />
         </div>
       </div>
 
@@ -248,10 +262,16 @@ export default async function AnalyticsDashboardPage({
               OE of currently running tenders, top 8 areas
             </span>
           </div>
-          <PipelineValueChart
-            data={pipelineByArea}
-            emptyMessage="No running tenders with an OE value yet."
-          />
+          {canViewMoney ? (
+            <PipelineValueChart
+              data={pipelineByArea}
+              emptyMessage="No running tenders with an OE value yet."
+            />
+          ) : (
+            <div style={{ padding: "48px 20px", textAlign: "center" }}>
+              <MoneyValue canView={false} />
+            </div>
+          )}
         </div>
       }
       <section className={shared.card} style={{ marginBottom: 24 }}>

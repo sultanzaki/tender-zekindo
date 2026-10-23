@@ -24,7 +24,8 @@ have been rebuilt around daily tender work.
   and typed confirmation. Result is placed next to the package for quicker scanning.
 - Excel export remains available without login and respects filters/track.
   Headers are formatted, filters enabled, and identifier/header rows frozen.
-  Internal notes remain administrator-only; responses cannot be shared-cached.
+  Monetary fields require login; internal notes remain administrator-only.
+  Responses cannot be shared-cached.
   Download links use native anchors so Next.js never prefetches an Excel file.
 - Tender detail separates Overview, Documents and administrator Activity.
   Notes no longer reserve large empty panels. Documents load only when requested;
@@ -85,6 +86,28 @@ Run the read-only smoke checks against a running production build with:
 CHROMIUM_PATH=/usr/bin/chromium \
 SMOKE_BASE_URL=http://localhost:3002 node tests/live-smoke.mjs
 ```
+
+## Monetary access update — 23 October 2026
+
+Guests now see blurred placeholders for OE, bid value and financial dashboard/
+analytics metrics. Monetary fields (including price per liter and OE notes) are
+removed at the server read boundary before rendering HTML or client payloads.
+Session checks and redaction run outside the shared tender cache. A viewer or
+administrator with a valid session sees the normal values. Scoped login links
+return users to their workspace after signing in.
+
+Anonymous Excel downloads remain available, with "Sign in to view" in monetary
+cells. Quantity, tender counts, outcome rates and other operational data stay
+public. Financial charts render only after login, so chart tooltips and serialized
+chart data cannot reveal amounts to guests.
+
+The update passed 40 server/business/Excel tests, 22 browser component tests,
+ESLint, TypeScript and the production build. The read-only production smoke
+rechecked 28 rendered views and five protected routes, inspected HTML/RSC payloads
+for monetary fields, rejected a forged session cookie, and validated masked
+anonymous Excel files for 213 upstream and 26 downstream tenders (239 combined).
+No JavaScript errors were observed. Signed-in access and shared-cache isolation
+were checked with fixtures; no live accounts or business data were modified.
 
 ## Validation limits
 

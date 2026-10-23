@@ -1,4 +1,4 @@
-import { formatCompactRupiah } from "@/lib/analytics";
+import { MoneyValue } from "../MoneyValue";
 import styles from "./charts.module.css";
 
 export interface KpiData {
@@ -12,14 +12,24 @@ export interface KpiData {
   decidedCount: number;
 }
 
-export function KpiCards({ data }: { data: KpiData }) {
+export function KpiCards({
+  data,
+  canViewMoney = false,
+}: {
+  data: KpiData;
+  canViewMoney?: boolean;
+}) {
   return (
     <div className={styles.kpiGrid}>
       {!data.hidePipeline && (
         <div className={styles.kpiCard}>
           <div className={styles.kpiLabel}>Pipeline Value</div>
           <div className={styles.kpiValue}>
-            {formatCompactRupiah(data.pipelineValue)}
+            <MoneyValue
+              value={data.pipelineValue}
+              canView={canViewMoney}
+              compact
+            />
           </div>
           <div className={styles.kpiCaption}>Known OE of active tenders</div>
         </div>
@@ -27,7 +37,7 @@ export function KpiCards({ data }: { data: KpiData }) {
       <div className={styles.kpiCard}>
         <div className={styles.kpiLabel}>Win Value</div>
         <div className={styles.kpiValue}>
-          {formatCompactRupiah(data.winValue)}
+          <MoneyValue value={data.winValue} canView={canViewMoney} compact />
         </div>
         <div className={styles.kpiCaption}>Known bid value of won tenders</div>
       </div>

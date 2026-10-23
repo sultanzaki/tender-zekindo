@@ -74,6 +74,38 @@ try {
     await page.waitForURL(/track=all/);
   }
   const detailPath = new URL(detailHref, base).pathname;
+  // Inspect HTML and the embedded RSC stream as well as visible text: a CSS
+  // blur must never leave the real monetary fields in the public payload.
+  for (const route of [
+    "/",
+    "/analytics",
+    "/tenders?track=all",
+    detailPath,
+    "/notifications",
+  ]) {
+    const response = await fetch(base + route);
+    assert.equal(response.status, 200);
+    const html = (await response.text()).replaceAll('\\"', '"');
+    assert.doesNotMatch(
+      html,
+      /"(?:oe|nilaiPenawaran|idrPerL)"\s*:\s*-?\d/,
+      route,
+    );
+  }
+  await page.goto(base + "/analytics", { waitUntil: "networkidle" });
+  assert.ok(
+    (await page
+      .getByRole("img", { name: "Sign in to view monetary values" })
+      .count()) >= 3,
+  );
+  assert.equal(
+    await page
+      .getByRole("heading", { name: "Pipeline Value by Area" })
+      .locator("../..")
+      .locator("svg")
+      .count(),
+    0,
+  );
   for (const route of [
     `${detailPath}/edit`,
     "/admin/users",
@@ -87,21 +119,23 @@ try {
     assert.equal(destination.pathname, "/login");
     assert.equal(destination.searchParams.get("next"), route);
   }
-  await page
-    .context()
-    .addCookies([
-      {
-        name: "zk_session",
-        value: "invalid-fixture-session",
-        domain: "localhost",
-        path: "/",
-      },
-    ]);
+  await page.context().addCookies([
+    {
+      name: "zk_session",
+      value: "invalid-fixture-session",
+      domain: "localhost",
+      path: "/",
+    },
+  ]);
   await page.goto(base + "/admin/users", { waitUntil: "networkidle" });
   assert.equal(
     new URL(page.url()).pathname,
     "/login",
     "A forged session cookie must not bypass server authorization",
+  );
+  await page.goto(base + "/tenders?track=all", { waitUntil: "networkidle" });
+  assert.ok(
+    await page.getByRole("link", { name: "Sign in to view amounts" }).count(),
   );
   await page.context().clearCookies();
   await page.goto(`${base}${detailPath}?tab=activity`, {
@@ -124,6 +158,16 @@ try {
     const sheet = workbook.getWorksheet("Tenders");
     assert.ok(!sheet.getRow(1).values.includes("Internal Notes"));
     assert.ok(sheet.views.some((view) => view.state === "frozen"));
+    const headers = sheet.getRow(1).values;
+    for (const header of ["OE (Rp)", "OE Note", "Bid Value (Rp)"]) {
+      const column = headers.indexOf(header);
+      assert.ok(column > 0);
+      for (let row = 2; row <= sheet.rowCount; row++)
+        assert.equal(
+          sheet.getRow(row).getCell(column).value,
+          "Sign in to view",
+        );
+    }
     workbookCounts[track] = sheet.rowCount - 1;
   }
   assert.equal(

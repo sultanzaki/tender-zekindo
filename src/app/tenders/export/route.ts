@@ -100,9 +100,9 @@ export async function GET(request: Request) {
       entitas: t.entitas,
       period: t.period,
       qty: t.qty,
-      oe: t.oe,
-      oeCatatan: t.oeCatatan,
-      nilaiPenawaran: t.nilaiPenawaran,
+      oe: ctx ? t.oe : "Sign in to view",
+      oeCatatan: ctx ? t.oeCatatan : "Sign in to view",
+      nilaiPenawaran: ctx ? t.nilaiPenawaran : "Sign in to view",
       pnl: t.pnl ? "Yes" : "",
       ...Object.fromEntries(
         milestoneTypes.map((m) => [msKey(m.key), t.milestones[m.key]]),

@@ -78,6 +78,77 @@ async function open(component, width = 1280) {
   await page.goto(`${base}/?component=${component}`);
   return page;
 }
+test("guests see blurred placeholders and a scoped sign-in link on desktop and phone", async () => {
+  for (const width of [1440, 375]) {
+    const page = await open("guest-money", width);
+    const field = page.getByTestId("money-field");
+    const mask = field.locator('[aria-hidden="true"]');
+    assert.equal(await mask.textContent(), "Rp ••••••••");
+    assert.equal(
+      await mask.evaluate((el) => getComputedStyle(el).filter),
+      "blur(4px)",
+    );
+    await field
+      .getByRole("img", { name: "Sign in to view monetary values" })
+      .waitFor();
+    assert.equal(
+      (await page.locator("body").innerText()).includes("1.234.568"),
+      false,
+    );
+    assert.equal(
+      (await page.locator("body").innerText()).includes("987.654"),
+      false,
+    );
+    const login = await page
+      .getByRole("link", { name: "Sign in to view amounts" })
+      .getAttribute("href");
+    assert.equal(
+      new URL(login, base).searchParams.get("next").startsWith("/tenders?"),
+      true,
+    );
+    assert.equal(
+      await page.getByRole("link", { name: "Export to Excel" }).isVisible(),
+      true,
+    );
+    assert.equal(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth > innerWidth,
+      ),
+      false,
+    );
+    await page.close();
+  }
+});
+
+test("signed-in viewers see monetary fields and metrics without administrator controls", async () => {
+  for (const width of [1440, 375]) {
+    const page = await open("viewer-money", width);
+    assert.equal(
+      await page.getByTestId("money-field").textContent(),
+      "Rp 1.234.568",
+    );
+    assert.equal(
+      await page
+        .getByRole("img", { name: "Sign in to view monetary values" })
+        .count(),
+      0,
+    );
+    assert.equal(
+      await page.getByRole("link", { name: "Sign in to view amounts" }).count(),
+      0,
+    );
+    assert.equal(
+      await page.getByRole("button", { name: /Edit result/ }).count(),
+      0,
+    );
+    assert.ok(
+      (await page.locator("body").innerText()).includes("Rp 1,2 Jt") ||
+        (await page.locator("body").innerText()).includes("Rp 1.2 Jt"),
+    );
+    assert.ok((await page.locator("body").innerText()).includes("987.654"));
+    await page.close();
+  }
+});
 test("mobile navigation exposes account actions and preserves downstream creation", async () => {
   const page = await open("nav", 375);
   await page.goto(page.url() + "&track=downstream");

@@ -20,7 +20,7 @@ const tender = {
   period: "2026",
   qty: 12.5,
   oe: 1000,
-  oeCatatan: "",
+  oeCatatan: "OE Rp 1.000",
   nilaiPenawaran: 900,
   pnl: false,
   milestones: { registration: "2026-10-22" },
@@ -96,6 +96,15 @@ test("anonymous export returns a valid workbook without internal notes", async (
   assert.ok(!sheet.getRow(2).values.includes(tender.catatanInternal));
   assert.ok(sheet.getRow(2).values.includes("TEST-001"));
   assert.ok(sheet.getRow(2).values.includes(12.5));
+  const headers = sheet.getRow(1).values;
+  for (const header of ["OE (Rp)", "OE Note", "Bid Value (Rp)"])
+    assert.equal(
+      sheet.getRow(2).getCell(headers.indexOf(header)).value,
+      "Sign in to view",
+    );
+  assert.ok(!sheet.getRow(2).values.includes(tender.oe));
+  assert.ok(!sheet.getRow(2).values.includes(tender.nilaiPenawaran));
+  assert.ok(!sheet.getRow(2).values.includes(tender.oeCatatan));
   assert.deepEqual(globalThis[stateKey].options, { track: "upstream" });
 });
 test("anonymous export preserves track and search filters", async () => {
@@ -110,11 +119,16 @@ test("viewer export omits internal notes", async () => {
   const sheet = await exportSheet({ profile: { role: "viewer" } });
   assert.ok(!sheet.getRow(1).values.includes("Internal Notes"));
   assert.ok(!sheet.getRow(2).values.includes(tender.catatanInternal));
+  assert.ok(sheet.getRow(2).values.includes(tender.oe));
+  assert.ok(sheet.getRow(2).values.includes(tender.nilaiPenawaran));
+  assert.ok(sheet.getRow(2).values.includes(tender.oeCatatan));
 });
 test("admin export retains internal notes and cannot be shared-cached", async () => {
   const sheet = await exportSheet({ profile: { role: "admin" } });
   assert.ok(sheet.getRow(1).values.includes("Internal Notes"));
   assert.ok(sheet.getRow(2).values.includes(tender.catatanInternal));
+  assert.ok(sheet.getRow(2).values.includes(tender.oe));
+  assert.ok(sheet.getRow(2).values.includes(tender.nilaiPenawaran));
 });
 
 test("all-track export includes both tracks without key collisions", async () => {

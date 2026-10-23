@@ -15,6 +15,8 @@ import { getProfilesByIds } from "./users";
 import { getMilestoneCatalog } from "./milestones";
 import { rowTrack } from "./milestones";
 import { TENDERS_TAG } from "./cache-tags";
+import { getAuthContext } from "./auth/dal";
+import { redactTenderMoney } from "./financial-access";
 
 // PostgREST (Supabase's REST layer) serializes `numeric` columns as JSON
 // strings, not numbers, to avoid precision loss — so despite the DB column
@@ -108,11 +110,18 @@ export const getAllTenders = cache(
   async (options?: {
     includeArchived?: boolean;
     track?: Track | "all";
-  }): Promise<Tender[]> =>
-    getTendersCached(
-      Boolean(options?.includeArchived),
-      options?.track ?? "all",
-    ),
+  }): Promise<Tender[]> => {
+    // Session checks belong outside unstable_cache; the cached data is shared
+    // by guests and signed-in users, whereas these DTOs are request-scoped.
+    const [tenders, ctx] = await Promise.all([
+      getTendersCached(
+        Boolean(options?.includeArchived),
+        options?.track ?? "all",
+      ),
+      getAuthContext(),
+    ]);
+    return ctx ? tenders : tenders.map(redactTenderMoney);
+  },
 );
 
 export interface NotificationCounts {
@@ -147,7 +156,11 @@ export async function getArchivedTenders(): Promise<Tender[]> {
     .order("archived_at", { ascending: false });
   if (error)
     throw new Error(`Failed to load archived tenders: ${error.message}`);
-  return withNames(data ?? []);
+  const [tenders, ctx] = await Promise.all([
+    withNames(data ?? []),
+    getAuthContext(),
+  ]);
+  return ctx ? tenders : tenders.map(redactTenderMoney);
 }
 
 export async function getTenderById(id: string): Promise<Tender | null> {
@@ -159,7 +172,7 @@ export async function getTenderById(id: string): Promise<Tender | null> {
   if (error) throw new Error(`Failed to load tender: ${error.message}`);
   if (!data) return null;
   const [tender] = await withNames([data]);
-  return tender;
+  return (await getAuthContext()) ? tender : redactTenderMoney(tender);
 }
 
 export function getFilterOptions(tenders: Tender[]): FilterOptions {

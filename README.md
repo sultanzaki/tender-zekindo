@@ -21,7 +21,13 @@ sidebar navigation on desktop and bottom navigation on phones.
 | `/admin/milestones` | Independent milestone catalogs by track                                    |
 | `/tenders/archive`  | Restore or confirm permanent deletion of archived tenders                  |
 
-Read access and Excel export are public. Mutations, archives, internal notes, and
+Tender browsing and Excel export are public, but monetary values (OE, bid value,
+price per liter, OE notes and financial analytics) require a valid login as viewer
+or administrator. Guests see blurred placeholders; original amounts are removed
+server-side before HTML/client data is generated. Guest workbooks retain the
+columns with "Sign in to view" instead of amounts. The shared tender cache is
+redacted per request, outside the cache, so access cannot cross user sessions.
+Mutations, archives, internal notes, and
 activity history require administrator access. The browser's saved views contain
 filter preferences only. All reported win rates use WIN / (WIN + LOSS); pipeline
 includes only known OE values on active tenders. Dates use Asia/Jakarta (WIB).

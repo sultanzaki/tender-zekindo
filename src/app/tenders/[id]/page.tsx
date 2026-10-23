@@ -13,12 +13,12 @@ import { getTenderActivity } from "@/lib/activity";
 import {
   resolveTenderMilestones,
   formatDateID,
-  formatRupiah,
   dateTone,
   todayISO,
 } from "@/lib/tender-logic";
 import { safeNextPath } from "@/lib/validation";
 import { PageHeading } from "@/components/PageHeading";
+import { MoneyValue, MoneyAccessNotice } from "@/components/MoneyValue";
 import { ResultBadge } from "@/components/ResultBadge";
 import { TrackBadge } from "@/components/TrackBadge";
 import { DocumentChecklist } from "@/components/DocumentChecklist";
@@ -86,29 +86,35 @@ export default async function Detail({
   const historicalLabels = await getMilestoneLabels(historicalKeys);
   const sections = tree
     ? buildDocumentSections(tree, [
-        ...documents.map((doc): SectionDescriptor => ({
-          id: `checklist:${doc.documentTypeId}`,
-          title: doc.label,
-          kind: "checklist",
-          milestoneKey: null,
-          documentTypeId: doc.documentTypeId,
-        })),
-        ...historicalKeys.map((key, index): SectionDescriptor => ({
-          id: `historical:${key}`,
-          title:
-            historicalLabels.get(key) ||
-            `Additional milestone files ${index + 1}`,
-          kind: "milestone",
-          milestoneKey: key,
-          documentTypeId: null,
-        })),
-        ...milestones.map((m): SectionDescriptor => ({
-          id: `milestone:${m.key}`,
-          title: m.label,
-          kind: "milestone",
-          milestoneKey: m.key,
-          documentTypeId: null,
-        })),
+        ...documents.map(
+          (doc): SectionDescriptor => ({
+            id: `checklist:${doc.documentTypeId}`,
+            title: doc.label,
+            kind: "checklist",
+            milestoneKey: null,
+            documentTypeId: doc.documentTypeId,
+          }),
+        ),
+        ...historicalKeys.map(
+          (key, index): SectionDescriptor => ({
+            id: `historical:${key}`,
+            title:
+              historicalLabels.get(key) ||
+              `Additional milestone files ${index + 1}`,
+            kind: "milestone",
+            milestoneKey: key,
+            documentTypeId: null,
+          }),
+        ),
+        ...milestones.map(
+          (m): SectionDescriptor => ({
+            id: `milestone:${m.key}`,
+            title: m.label,
+            kind: "milestone",
+            milestoneKey: m.key,
+            documentTypeId: null,
+          }),
+        ),
       ])
     : [];
   const activity = tab === "activity" ? await getTenderActivity(id) : null;
@@ -166,13 +172,26 @@ export default async function Detail({
       </nav>
       {tab === "overview" && (
         <>
+          {!ctx && <MoneyAccessNotice returnTo={tabHref("overview")} />}
           <div className={workspace.metrics}>
-            {[
-              ["Entity / Consortium", tender.entitas || "—"],
-              ["Quantity", tender.qty?.toLocaleString("id-ID") ?? "—"],
-              ["OE value", formatRupiah(tender.oe)],
-              ["Our bid value", formatRupiah(tender.nilaiPenawaran)],
-            ].map(([label, value]) => (
+            {(
+              [
+                ["Entity / Consortium", tender.entitas || "—"],
+                ["Quantity", tender.qty?.toLocaleString("id-ID") ?? "—"],
+                [
+                  "OE value",
+                  <MoneyValue key="oe" value={tender.oe} canView={!!ctx} />,
+                ],
+                [
+                  "Our bid value",
+                  <MoneyValue
+                    key="bid"
+                    value={tender.nilaiPenawaran}
+                    canView={!!ctx}
+                  />,
+                ],
+              ] as const
+            ).map(([label, value]) => (
               <div key={label} className={workspace.metric}>
                 <span className={workspace.metricLabel}>{label}</span>
                 <strong className={styles.detailValue}>{value}</strong>

@@ -6,7 +6,8 @@ For a system browser, use `CHROMIUM_PATH=/usr/bin/chromium npm run test:ui`.
 The runner bundles real client components into a temporary local page. Chromium
 exercises navigation, filters, saved views, forms/review, unsaved changes, access
 management, archive confirmations, milestone catalogs, document upload success/
-failure, calendar export and responsive layouts. Next.js navigation and server
+failure, calendar export, guest monetary masks versus signed-in viewer access,
+and responsive layouts. Next.js navigation and server
 actions are mocked; no connected application data is modified. The temporary
 server, browser and generated bundles are removed after the run.
 

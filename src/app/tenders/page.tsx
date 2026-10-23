@@ -47,6 +47,7 @@ export default async function TenderTablePage({
         milestoneTypes={milestoneTypes}
         anchor={todayISO()}
         isAdmin={ctx?.profile.role === "admin"}
+        canViewMoney={!!ctx}
         track={track}
       />
     </>

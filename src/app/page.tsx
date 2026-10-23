@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { getAllTenders } from "@/lib/tenders";
+import { getAuthContext } from "@/lib/auth/dal";
+import { MoneyValue, MoneyAccessNotice } from "@/components/MoneyValue";
 import { getMilestoneCatalog } from "@/lib/milestones";
 import {
   computeDeadlines,
   computeStalled,
   todayISO,
   formatDateID,
-  formatRupiah,
 } from "@/lib/tender-logic";
 import { overallWinRate, totalPipelineValue } from "@/lib/analytics";
 import { PageHeading } from "@/components/PageHeading";
@@ -25,9 +26,10 @@ export default async function Overview({
     params.track === "upstream" || params.track === "downstream"
       ? params.track
       : "all";
-  const [tenders, catalog] = await Promise.all([
+  const [tenders, catalog, ctx] = await Promise.all([
     getAllTenders({ track }),
     getMilestoneCatalog(),
+    getAuthContext(),
   ]);
   const today = todayISO();
   const deadlines = computeDeadlines(tenders, today, catalog);
@@ -199,10 +201,21 @@ export default async function Overview({
             <div className={styles.insight}>
               <div>
                 <p>Known pipeline value · OE</p>
-                <strong>{formatRupiah(totalPipelineValue(tenders))}</strong>
-                <p>
-                  {known} of {running.length} active tenders have an OE value.
-                </p>
+                <strong>
+                  <MoneyValue
+                    value={totalPipelineValue(tenders)}
+                    canView={!!ctx}
+                  />
+                </strong>
+                {ctx ? (
+                  <p>
+                    {known} of {running.length} active tenders have an OE value.
+                  </p>
+                ) : (
+                  <MoneyAccessNotice
+                    returnTo={track === "all" ? "/" : `/?track=${track}`}
+                  />
+                )}
               </div>
             </div>
             <div className={styles.insight}>

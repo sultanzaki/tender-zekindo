@@ -1,0 +1,23 @@
+.locked {
+  display: inline-block;
+  white-space: nowrap;
+  vertical-align: baseline;
+}
+.blur {
+  display: inline-block;
+  filter: blur(4px);
+  user-select: none;
+  pointer-events: none;
+}
+.notice {
+  margin: 12px 0;
+  color: var(--color-fg2);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.notice a {
+  color: var(--color-primary);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

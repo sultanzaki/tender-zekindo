@@ -10,6 +10,7 @@ import {
 } from "react";
 import Link from "next/link";
 import { PageHeading } from "./PageHeading";
+import { MoneyValue, MoneyAccessNotice } from "./MoneyValue";
 import { TableViews } from "./TableViews";
 import { Modal } from "./Modal";
 import { useStoredJSON } from "./useStoredJSON";
@@ -36,7 +37,6 @@ import {
   dateTone,
   filterTenders,
   formatDateID,
-  formatRupiah,
   sortTenders,
   type SortDirection,
   type SortKey,
@@ -108,6 +108,7 @@ export function TenderTableClient({
   milestoneTypes,
   anchor,
   isAdmin,
+  canViewMoney = false,
   track,
   initialFilters = DEFAULT_FILTERS,
 }: {
@@ -116,6 +117,7 @@ export function TenderTableClient({
   milestoneTypes: MilestoneType[];
   anchor: string;
   isAdmin: boolean;
+  canViewMoney?: boolean;
   /** The track being shown. Carried into the export link so exporting cannot
    * silently dump the other track's tenders into the spreadsheet. */
   track: Track | "all";
@@ -350,6 +352,7 @@ export function TenderTableClient({
         <button
           type="button"
           className={styles.sortButton}
+          disabled={!canViewMoney && (key === "oe" || key === "nilaiPenawaran")}
           onClick={() => toggleSort(key)}
         >
           {label}
@@ -374,6 +377,11 @@ export function TenderTableClient({
           </a>
         }
       />
+      {!canViewMoney && (
+        <MoneyAccessNotice
+          returnTo={`/tenders?${tenderQuery(filters, track)}`}
+        />
+      )}
       <TrackSwitch
         current={track}
         basePath="/tenders"
@@ -595,7 +603,8 @@ export function TenderTableClient({
                 {t.area} · {t.period}
               </span>
               <span className={styles.cardMeta}>
-                Bid: {formatRupiah(t.nilaiPenawaran)}
+                Bid:{" "}
+                <MoneyValue value={t.nilaiPenawaran} canView={canViewMoney} />
               </span>
             </Link>
           ))}
@@ -763,7 +772,7 @@ export function TenderTableClient({
                     )}
                     {visibleCols.oe && (
                       <td className={`${styles.td} ${styles.tdRight}`}>
-                        {formatRupiah(t.oe)}
+                        <MoneyValue value={t.oe} canView={canViewMoney} />
                       </td>
                     )}
                     {visibleCols.qty && (
@@ -772,7 +781,10 @@ export function TenderTableClient({
                       </td>
                     )}
                     <td className={`${styles.td} ${styles.tdRight}`}>
-                      {formatRupiah(t.nilaiPenawaran)}
+                      <MoneyValue
+                        value={t.nilaiPenawaran}
+                        canView={canViewMoney}
+                      />
                     </td>
                     {visibleCols.pnl && (
                       <td className={styles.td}>{t.pnl ? "Yes" : "—"}</td>

@@ -11,6 +11,9 @@ import { NewTenderForm } from "../../src/components/NewTenderForm";
 import { ManageUsersClient } from "../../src/components/ManageUsersClient";
 import { NumberInput } from "../../src/components/NumberInput";
 import { DocumentExplorer } from "../../src/components/DocumentExplorer";
+import { MoneyValue } from "../../src/components/MoneyValue";
+import { KpiCards } from "../../src/components/charts/KpiCards";
+import { TrackComparisonChart } from "../../src/components/charts/TrackComparisonChart";
 import type { Tender, Profile } from "../../src/lib/types";
 import "../../src/app/globals.css";
 const user: Profile = {
@@ -50,7 +53,64 @@ function NumberDemo() {
     </label>
   );
 }
+function FinancialDemo({ signedIn }: { signedIn: boolean }) {
+  return (
+    <>
+      <div data-testid="money-field">
+        <MoneyValue value={1234567.89} canView={signedIn} />
+      </div>
+      <KpiCards
+        canViewMoney={signedIn}
+        data={{
+          pipelineValue: 1234567.89,
+          winValue: 987654.32,
+          runningCount: 12,
+          winRatePct: 60,
+          winCount: 6,
+          lossCount: 4,
+          decidedCount: 10,
+        }}
+      />
+      <TrackComparisonChart
+        canViewMoney={signedIn}
+        data={[
+          {
+            track: "upstream",
+            label: "Upstream",
+            count: 12,
+            pipelineValue: 1234567.89,
+            winValue: 987654.32,
+            winRate: 60,
+          },
+        ]}
+      />
+      <TenderTableClient
+        tenders={[
+          {
+            ...tenders[0],
+            oe: signedIn ? 1234567.89 : null,
+            nilaiPenawaran: signedIn ? 987654.32 : null,
+            qty: 12.5,
+          },
+        ]}
+        options={{
+          periods: ["2026"],
+          areas: ["Jawa"],
+          entitasList: ["ZKI"],
+          customers: ["Customer"],
+        }}
+        milestoneTypes={[]}
+        anchor="2026-10-22"
+        isAdmin={false}
+        canViewMoney={signedIn}
+        track="upstream"
+      />
+    </>
+  );
+}
 const components = {
+  "guest-money": <FinancialDemo signedIn={false} />,
+  "viewer-money": <FinancialDemo signedIn />,
   nav: (
     <>
       <TopNav profile={user}>
@@ -70,6 +130,7 @@ const components = {
       milestoneTypes={[]}
       anchor="2026-10-22"
       isAdmin
+      canViewMoney
       track="upstream"
     />
   ),
