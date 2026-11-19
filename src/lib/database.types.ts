@@ -5,6 +5,12 @@ import type { Milestones, TenderEventAction, TenderEventChange, UserRole } from 
 export interface Database {
   public: {
     Tables: {
+      reminder_digest: {
+        Row: { day: string; payload: { from: string; to: string[]; subject: string; text: string }; sent_at: string | null; provider_id: string | null };
+        Insert: { day: string; payload: { from: string; to: string[]; subject: string; text: string }; sent_at?: string | null; provider_id?: string | null };
+        Update: { sent_at?: string | null; provider_id?: string | null };
+        Relationships: [];
+      };
       tenders: {
         Row: {
           id: string;
