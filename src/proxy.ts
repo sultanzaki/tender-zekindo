@@ -21,7 +21,7 @@ import { SESSION_COOKIE_NAME } from "@/lib/auth/sessionCookie";
 export function proxy(request: NextRequest) {
   const hasSessionCookie = !!request.cookies.get(SESSION_COOKIE_NAME)?.value;
   const path = request.nextUrl.pathname;
-  if (!hasSessionCookie && path !== "/login") {
+  if (!hasSessionCookie && path !== "/login" && path !== "/api/cron/reminders") {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
     redirectUrl.search = "";
