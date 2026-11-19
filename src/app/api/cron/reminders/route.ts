@@ -13,7 +13,7 @@ function authorized(request: Request) {
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
-export async function POST(request: Request) {
+export async function GET(request: Request) {
   if (!authorized(request)) return Response.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const apiKey = process.env.RESEND_API_KEY;
@@ -78,4 +78,9 @@ export async function POST(request: Request) {
   } catch {
     return Response.json({ error: "Reminder job failed; check server configuration and database migration" }, { status: 500 });
   }
+}
+
+// Also support authenticated manual retries.
+export async function POST(request: Request) {
+  return GET(request);
 }
