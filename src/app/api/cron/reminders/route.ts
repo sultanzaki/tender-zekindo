@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { supabaseServer } from "@/lib/supabase-server";
+import { renderReminderHtml, type ReminderRow } from "@/lib/reminder-email";
 import { todayISO, daysBetween } from "@/lib/tender-logic";
 
 export const runtime = "nodejs";
@@ -34,7 +35,7 @@ export async function GET(request: Request) {
         catalog.push(...r.data);
         if (r.data.length < 500) break;
       }
-      const lines: { days: number; line: string }[] = [];
+      const lines: (ReminderRow & { line: string })[] = [];
       for (let offset = 0; ; offset += 500) {
         const r = await db.from("tenders").select("id,track,customer,product,tender_no,milestones,milestone_order,result").is("archived_at", null).order("id").range(offset, offset + 499);
         if (r.error) throw r.error;
@@ -46,14 +47,14 @@ export async function GET(request: Request) {
             if (!date) continue;
             const days = daysBetween(date, day);
             if (![0, 1, 3].includes(days)) continue;
-            lines.push({ days, line: ["H-" + days, date, t.track, t.customer, t.product ?? "", t.tender_no ?? "", m.label].join(" | ") });
+            lines.push({ days, date, track: t.track, customer: t.customer, product: t.product ?? "", tenderNo: t.tender_no ?? "", milestone: m.label, line: ["H-" + days, date, t.track, t.customer, t.product ?? "", t.tender_no ?? "", m.label].join(" | ") });
           }
         }
         if (r.data.length < 500) break;
       }
       if (!lines.length) return Response.json({ status: "no_deadlines" });
       lines.sort((a,b) => a.days - b.days || a.line.localeCompare(b.line));
-      const payload = { from, to, subject: "Zekindo Tender Reminder | " + day, text: ["ZEKINDO — TENDER MANAGEMENT", "", "Upcoming milestones (Jakarta time):", ...lines.map(x => x.line), "", new URL("/notifications", appUrl).href].join("\n") };
+      const payload = { from, to, html: renderReminderHtml(lines, day, new URL("/notifications", appUrl).href), subject: "Zekindo Tender Reminder | " + day, text: ["ZEKINDO — TENDER MANAGEMENT", "", "Upcoming milestones (Jakarta time):", ...lines.map(x => x.line), "", new URL("/notifications", appUrl).href].join("\n") };
       const saved = await db.from("reminder_digest").upsert({ day, payload }, { onConflict: "day", ignoreDuplicates: true });
       if (saved.error) throw saved.error;
       const read = await db.from("reminder_digest").select("*").eq("day", day).single();
